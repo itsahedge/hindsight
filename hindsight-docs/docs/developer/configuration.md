@@ -540,7 +540,7 @@ Controls the retain (memory ingestion) pipeline.
 | `HINDSIGHT_API_RETAIN_MAX_COMPLETION_TOKENS` | Max completion tokens for fact extraction LLM calls | `64000` |
 | `HINDSIGHT_API_RETAIN_CHUNK_SIZE` | Max characters per chunk for fact extraction. Larger chunks extract fewer LLM calls but may lose context. | `3000` |
 | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE` | Fact extraction mode: `concise`, `verbose`, or `custom` | `concise` |
-| `HINDSIGHT_API_RETAIN_SPEC` | Declarative description of what to focus on when retaining. Injected into any extraction mode alongside the built-in rules. | - |
+| `HINDSIGHT_API_RETAIN_MISSION` | What this bank should pay attention to during extraction. Steers the LLM without replacing the extraction rules — works alongside any extraction mode. | - |
 | `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` | Full prompt override for fact extraction (only used when mode is `custom`). Replaces built-in extraction rules entirely. | - |
 | `HINDSIGHT_API_RETAIN_EXTRACT_CAUSAL_LINKS` | Extract causal relationships between facts | `true` |
 | `HINDSIGHT_API_RETAIN_BATCH_ENABLED` | Use LLM Batch API for fact extraction (50% cost savings, only with async operations) | `false` |
@@ -552,18 +552,16 @@ There are three levels of customization for the retain pipeline. Start with the 
 
 | Goal | Use |
 |------|-----|
-| Steer what topics to focus on or deprioritize | `HINDSIGHT_API_RETAIN_SPEC` |
+| Steer what topics to focus on or deprioritize | `HINDSIGHT_API_RETAIN_MISSION` |
 | Extract more detail per fact | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbose` |
 | Completely replace the extraction rules | `HINDSIGHT_API_RETAIN_EXTRACTION_MODE=custom` + `HINDSIGHT_API_RETAIN_CUSTOM_INSTRUCTIONS` |
 
-**`HINDSIGHT_API_RETAIN_SPEC` — declarative focus (recommended starting point)**
+**`HINDSIGHT_API_RETAIN_MISSION` — steer extraction without replacing it (recommended starting point)**
 
-Describe what this bank should focus on, in plain language. Injected into the prompt alongside the built-in extraction rules — no need to rewrite anything.
-
-Works with any extraction mode (`concise`, `verbose`, `custom`).
+Tell the bank what to pay attention to during extraction, in plain language. The mission is injected into the extraction prompt alongside the built-in rules — it narrows focus without replacing the underlying logic. Works with any extraction mode (`concise`, `verbose`, `custom`).
 
 ```bash
-export HINDSIGHT_API_RETAIN_SPEC="Focus on technical decisions, architecture choices, and team member expertise. Deprioritize social or personal information."
+export HINDSIGHT_API_RETAIN_MISSION="Focus on technical decisions, architecture choices, and team member expertise. Deprioritize social or personal information."
 ```
 
 **`HINDSIGHT_API_RETAIN_EXTRACTION_MODE=verbose` — more detail per fact**
@@ -574,7 +572,7 @@ Use when you need richer facts with full context, relationships, and verbosity. 
 
 Replaces the built-in selectivity rules entirely. The structural parts of the prompt (output format, temporal handling, coreference resolution) remain intact — only the extraction guidelines are replaced.
 
-Use this when `retain_spec` isn't sufficient and you need strict inclusion/exclusion logic.
+Use this when `retain_mission` isn't sufficient and you need strict inclusion/exclusion logic.
 
 ```bash
 export HINDSIGHT_API_RETAIN_EXTRACTION_MODE=custom
@@ -728,22 +726,22 @@ Observations are consolidated knowledge synthesized from facts.
 | `HINDSIGHT_API_ENABLE_OBSERVATIONS` | Enable observation consolidation | `true` |
 | `HINDSIGHT_API_CONSOLIDATION_BATCH_SIZE` | Memories to load per batch (internal optimization) | `50` |
 | `HINDSIGHT_API_CONSOLIDATION_MAX_TOKENS` | Max tokens for recall when finding related observations during consolidation | `1024` |
-| `HINDSIGHT_API_OBSERVATIONS_SPEC` | Declarative description of what observations are for this bank. Replaces the built-in durable-knowledge rules. | - |
+| `HINDSIGHT_API_OBSERVATIONS_MISSION` | What this bank should synthesise into durable observations. Replaces the built-in consolidation rules — leave unset to use the server default. | - |
 
 #### Customizing observations: when to use what
 
 | Goal | Use |
 |------|-----|
 | Default behavior: durable specific facts, no ephemeral state | Leave unset |
-| Change what observations *are* for this bank (different shape, different purpose) | `HINDSIGHT_API_OBSERVATIONS_SPEC` |
+| Change what observations *are* for this bank (different shape, different purpose) | `HINDSIGHT_API_OBSERVATIONS_MISSION` |
 
-**`HINDSIGHT_API_OBSERVATIONS_SPEC` — redefine what observations are**
+**`HINDSIGHT_API_OBSERVATIONS_MISSION` — redefine what this bank synthesises**
 
 By default, observations are durable, specific facts synthesized from memories — the kind of knowledge that stays true over time (preferences, skills, relationships, recurring patterns). Ephemeral state is filtered out. Contradictions are tracked with temporal markers.
 
-Set `HINDSIGHT_API_OBSERVATIONS_SPEC` to replace this definition entirely. Write a plain-language description of what observations should be for your use case. The LLM will use this instead of the default rules when deciding what to create or update.
+Set `HINDSIGHT_API_OBSERVATIONS_MISSION` to replace this definition entirely. Write a plain-language description of what observations should be for your use case. The LLM will use this instead of the default rules when deciding what to create or update. Leave it unset to keep the server default.
 
-:::tip When to use observations_spec
+:::tip When to use observations_mission
 Use it when the default durable-knowledge behavior doesn't match your use case. Common scenarios:
 - You want **broader event summaries** rather than isolated facts
 - You want observations **grouped by time period** (weekly, monthly)
@@ -754,19 +752,19 @@ Use it when the default durable-knowledge behavior doesn't match your use case. 
 **Example: Weekly event summaries**
 
 ```bash
-export HINDSIGHT_API_OBSERVATIONS_SPEC="Observations are broad summaries of project events grouped by week. Each observation should capture what happened, what was decided, and what was blocked — not individual facts. Merge related events into cohesive weekly narratives."
+export HINDSIGHT_API_OBSERVATIONS_MISSION="Observations are broad summaries of project events grouped by week. Each observation should capture what happened, what was decided, and what was blocked — not individual facts. Merge related events into cohesive weekly narratives."
 ```
 
 **Example: Person-centric knowledge**
 
 ```bash
-export HINDSIGHT_API_OBSERVATIONS_SPEC="Observations are durable facts about specific named people: their preferences, skills, relationships, and behavioral patterns. Only create observations for facts that are stable over time and tied to a named individual."
+export HINDSIGHT_API_OBSERVATIONS_MISSION="Observations are durable facts about specific named people: their preferences, skills, relationships, and behavioral patterns. Only create observations for facts that are stable over time and tied to a named individual."
 ```
 
 **Example: Support ticket patterns**
 
 ```bash
-export HINDSIGHT_API_OBSERVATIONS_SPEC="Observations are recurring patterns in customer support interactions: common failure modes, frequently requested features, and pain points that appear across multiple tickets."
+export HINDSIGHT_API_OBSERVATIONS_MISSION="Observations are recurring patterns in customer support interactions: common failure modes, frequently requested features, and pain points that appear across multiple tickets."
 ```
 
 ### Reflect
@@ -774,6 +772,17 @@ export HINDSIGHT_API_OBSERVATIONS_SPEC="Observations are recurring patterns in c
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `HINDSIGHT_API_REFLECT_MAX_ITERATIONS` | Max tool call iterations before forcing a response | `10` |
+| `HINDSIGHT_API_REFLECT_MISSION` | Global reflect mission (identity and reasoning framing). Overridden per bank via config API. | - |
+
+#### Disposition
+
+Disposition traits control how the bank reasons during reflect operations. Each trait is on a scale of 1–5. These are hierarchical — they can be overridden per bank via the [config API](./configuration.md#hierarchical-configuration).
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `HINDSIGHT_API_DISPOSITION_SKEPTICISM` | How skeptical vs trusting (1=trusting, 5=skeptical) | `3` |
+| `HINDSIGHT_API_DISPOSITION_LITERALISM` | How literally to interpret information (1=flexible, 5=literal) | `3` |
+| `HINDSIGHT_API_DISPOSITION_EMPATHY` | How much to consider emotional context (1=detached, 5=empathetic) | `3` |
 
 ### MCP Server
 
@@ -964,8 +973,8 @@ This design prevents bugs where global defaults are used instead of bank overrid
 Configuration fields are categorized for security:
 
 1. **Configurable Fields** - Safe behavioral settings that can be customized per-bank:
-   - Retention: `retain_chunk_size`, `retain_extraction_mode`, `retain_spec`, `retain_custom_instructions`
-   - Observations: `enable_observations`, `observations_spec`
+   - Retention: `retain_chunk_size`, `retain_extraction_mode`, `retain_mission`, `retain_custom_instructions`
+   - Observations: `enable_observations`, `observations_mission`
 
 2. **Credential Fields** - NEVER exposed or configurable via API:
    - API keys: `*_api_key` (all LLM API keys)

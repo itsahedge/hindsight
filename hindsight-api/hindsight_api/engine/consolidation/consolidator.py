@@ -855,8 +855,8 @@ async def _consolidate_with_llm(
     else:
         observations_text = "[]"
 
-    observations_spec = config.observations_spec if config is not None else None
-    prompt_template = build_consolidation_prompt(observations_spec)
+    observations_mission = config.observations_mission if config is not None else None
+    prompt_template = build_consolidation_prompt(observations_mission)
     prompt = prompt_template.format(
         fact_text=fact_text,
         observations_text=observations_text,

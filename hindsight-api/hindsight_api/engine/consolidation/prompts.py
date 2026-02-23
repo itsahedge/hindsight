@@ -30,7 +30,7 @@ Compare the new fact against existing observations:
 - New topic → CREATE new observation
 - Purely ephemeral → return empty actions list"""
 
-# Default rules used when no observations_spec is set
+# Default rules used when no observations_mission is set
 _DEFAULT_RULES = """Extract DURABLE KNOWLEDGE from facts — the stable truth implied by an event, not transient state.
 
 Example: "User moved to Room 203" → observe "Room 203 exists", not "User is in Room 203".
@@ -42,14 +42,14 @@ Rules:
 - CONTRADICTION/UPDATE: capture both states with temporal markers ("used to X, now Y")."""
 
 
-def build_consolidation_prompt(observations_spec: str | None = None) -> str:
+def build_consolidation_prompt(observations_mission: str | None = None) -> str:
     """
     Build the consolidation prompt.
 
-    If observations_spec is provided, it defines what observations are for this bank,
-    replacing the default durable-knowledge rules. Otherwise the default rules apply.
+    If observations_mission is provided, it replaces the default durable-knowledge rules
+    with bank-specific instructions for what to synthesise. Otherwise the default rules apply.
     """
-    rules_section = f"## OBSERVATIONS DEFINITION\n{observations_spec}" if observations_spec else _DEFAULT_RULES
+    rules_section = f"## MISSION\n{observations_mission}" if observations_mission else _DEFAULT_RULES
 
     return (
         "You are a memory consolidation system. Synthesize facts into observations "

@@ -2003,12 +2003,12 @@ def test_consolidation_prompt_default():
     assert "{observations_text}" in prompt
 
 
-def test_consolidation_prompt_observations_spec():
-    """Test that observations_spec replaces the default rules."""
+def test_consolidation_prompt_observations_mission():
+    """Test that observations_mission replaces the default rules."""
     from hindsight_api.engine.consolidation.prompts import build_consolidation_prompt
 
     spec = "Observations are weekly summaries of sprint outcomes and team dynamics."
-    prompt = build_consolidation_prompt(observations_spec=spec)
+    prompt = build_consolidation_prompt(observations_mission=spec)
 
     # Spec is injected
     assert spec in prompt
@@ -2025,37 +2025,37 @@ def test_consolidation_prompt_observations_spec():
     assert spec in rendered
 
 
-def test_observations_spec_config():
-    """Test that observations_spec is loaded from env and exposed as configurable."""
+def test_observations_mission_config():
+    """Test that observations_mission is loaded from env and exposed as configurable."""
     import os
 
     from hindsight_api.config import HindsightConfig, _get_raw_config, clear_config_cache
 
-    original = os.getenv("HINDSIGHT_API_OBSERVATIONS_SPEC")
+    original = os.getenv("HINDSIGHT_API_OBSERVATIONS_MISSION")
     try:
-        os.environ["HINDSIGHT_API_OBSERVATIONS_SPEC"] = "Weekly sprint summaries only."
+        os.environ["HINDSIGHT_API_OBSERVATIONS_MISSION"] = "Weekly sprint summaries only."
         clear_config_cache()
         config = _get_raw_config()
-        assert config.observations_spec == "Weekly sprint summaries only."
-        assert "observations_spec" in HindsightConfig.get_configurable_fields()
+        assert config.observations_mission == "Weekly sprint summaries only."
+        assert "observations_mission" in HindsightConfig.get_configurable_fields()
     finally:
         if original is None:
-            os.environ.pop("HINDSIGHT_API_OBSERVATIONS_SPEC", None)
+            os.environ.pop("HINDSIGHT_API_OBSERVATIONS_MISSION", None)
         else:
-            os.environ["HINDSIGHT_API_OBSERVATIONS_SPEC"] = original
+            os.environ["HINDSIGHT_API_OBSERVATIONS_MISSION"] = original
         clear_config_cache()
 
 
 @pytest.mark.asyncio
-async def test_consolidation_with_observations_spec(memory: "MemoryEngine", request_context):
-    """Test that observations_spec is used during consolidation without errors."""
+async def test_consolidation_with_observations_mission(memory: "MemoryEngine", request_context):
+    """Test that observations_mission is used during consolidation without errors."""
     import os
 
     from hindsight_api.config import _get_raw_config, clear_config_cache
 
-    original = os.getenv("HINDSIGHT_API_OBSERVATIONS_SPEC")
+    original = os.getenv("HINDSIGHT_API_OBSERVATIONS_MISSION")
     try:
-        os.environ["HINDSIGHT_API_OBSERVATIONS_SPEC"] = (
+        os.environ["HINDSIGHT_API_OBSERVATIONS_MISSION"] = (
             "Observations are summaries of programming language usage patterns."
         )
         clear_config_cache()
@@ -2083,7 +2083,7 @@ async def test_consolidation_with_observations_spec(memory: "MemoryEngine", requ
             await memory.delete_bank(bank_id, request_context=request_context)
     finally:
         if original is None:
-            os.environ.pop("HINDSIGHT_API_OBSERVATIONS_SPEC", None)
+            os.environ.pop("HINDSIGHT_API_OBSERVATIONS_MISSION", None)
         else:
-            os.environ["HINDSIGHT_API_OBSERVATIONS_SPEC"] = original
+            os.environ["HINDSIGHT_API_OBSERVATIONS_MISSION"] = original
         clear_config_cache()
