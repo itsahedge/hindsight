@@ -216,9 +216,16 @@ async def run_consolidation_job(
             tag_key = tuple(sorted(m.get("tags") or []))
             tag_groups.setdefault(tag_key, []).append(dict(m))
 
-        # Flatten into LLM batches respecting both tag groups and llm_batch_size
+        # Flatten into LLM batches respecting both tag groups and llm_batch_size.
+        # Sort each tag group by temporal fields so co-occurring facts land in the
+        # same LLM batch, enabling cross-modal observation merging.
         llm_batches: list[list[dict[str, Any]]] = []
         for group in tag_groups.values():
+            group.sort(
+                key=lambda m: (
+                    m.get("occurred_start") or m.get("mentioned_at") or datetime.min.replace(tzinfo=timezone.utc),
+                )
+            )
             for i in range(0, len(group), llm_batch_size):
                 llm_batches.append(group[i : i + llm_batch_size])
 
