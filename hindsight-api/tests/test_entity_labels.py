@@ -188,8 +188,8 @@ def test_build_labels_model_free_values_optional():
     assert Model().topic is None  # type: ignore[attr-defined]
 
 
-def test_build_labels_model_free_values_required():
-    """free_values=True, optional=False → str field (in required array)."""
+def test_build_labels_model_free_values_always_optional():
+    """free_values=True with optional=False is still treated as str | None — always optional."""
     from hindsight_api.engine.retain.entity_labels import build_labels_model
 
     labels_cfg = EntityLabelsConfig(
@@ -198,12 +198,14 @@ def test_build_labels_model_free_values_required():
     Model = build_labels_model(labels_cfg)
     assert Model is not None
     schema = Model.model_json_schema()
-    assert "topic" in schema.get("required", [])
-    assert schema["properties"]["topic"]["type"] == "string"
+    # free_values groups are always optional (str | None), never in required
+    assert "topic" not in schema.get("required", [])
+    anyOf = schema["properties"]["topic"].get("anyOf", [])
+    assert any(b.get("type") == "string" for b in anyOf)
 
 
-def test_build_labels_model_free_values_multi():
-    """free_values=True, multi_value=True → list[str] field."""
+def test_build_labels_model_free_values_multi_still_optional():
+    """free_values=True with multi_value=True is still treated as str | None — multi ignored."""
     from hindsight_api.engine.retain.entity_labels import build_labels_model
 
     labels_cfg = EntityLabelsConfig(
@@ -212,8 +214,10 @@ def test_build_labels_model_free_values_multi():
     Model = build_labels_model(labels_cfg)
     assert Model is not None
     schema = Model.model_json_schema()
-    assert schema["properties"]["tags"]["type"] == "array"
-    assert schema["properties"]["tags"]["items"]["type"] == "string"
+    # free_values groups are always str | None regardless of multi_value
+    assert "tags" not in schema.get("required", [])
+    anyOf = schema["properties"]["tags"].get("anyOf", [])
+    assert any(b.get("type") == "string" for b in anyOf)
 
 
 def test_build_labels_model_free_values_no_values_still_creates_field():
@@ -569,16 +573,21 @@ def test_free_values_label_rejects_none_sentinel():
         assert result == set(), f"Sentinel '{sentinel}' should not produce an entity, got: {result}"
 
 
-def test_free_values_label_multi_value():
-    """free_values + multi_value: each list item becomes a separate entity."""
-    from hindsight_api.engine.retain.entity_labels import parse_entity_labels
+def test_free_values_label_is_single_value():
+    """free_values groups are always single-value (str | None) — multi_value is ignored."""
+    from hindsight_api.engine.retain.entity_labels import build_labels_model, parse_entity_labels
 
+    # Even with multi_value=True, free_values produces str | None
     labels_cfg = parse_entity_labels(
-        [{"key": "topics", "free_values": True, "multi_value": True, "values": []}]
+        [{"key": "topic", "free_values": True, "multi_value": True, "values": []}]
     )
-    entity_texts = _run_label_post_processing(labels_cfg, {"topics": ["algebra", "quadratic equations"]})
-    assert "topics:algebra" in entity_texts
-    assert "topics:quadratic equations" in entity_texts
+    Model = build_labels_model(labels_cfg)
+    assert Model is not None
+    schema = Model.model_json_schema()
+    # Must be str | None, not list
+    assert schema["properties"]["topic"].get("type") != "array"
+    anyOf = schema["properties"]["topic"].get("anyOf", [])
+    assert any(b.get("type") == "string" for b in anyOf)
 
 
 def test_free_values_label_not_in_lookup():

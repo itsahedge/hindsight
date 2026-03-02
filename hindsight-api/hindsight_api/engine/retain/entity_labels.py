@@ -78,12 +78,10 @@ def build_labels_model(labels_cfg: EntityLabelsConfig) -> type[BaseModel] | None
     Build a dynamic Pydantic model for structured label extraction.
 
     Each LabelGroup becomes a typed field:
+    - free_values=True                                     → str | None  (always optional, no multi)
     - free_values=False, multi_value=False, optional=True  → Literal["v1","v2"] | None
     - free_values=False, multi_value=False, optional=False → Literal["v1","v2"]  (required)
     - free_values=False, multi_value=True                  → list[Literal["v1","v2"]]
-    - free_values=True,  multi_value=False, optional=True  → str | None
-    - free_values=True,  multi_value=False, optional=False → str  (required)
-    - free_values=True,  multi_value=True                  → list[str]
 
     Args:
         labels_cfg: Parsed EntityLabelsConfig
@@ -98,13 +96,8 @@ def build_labels_model(labels_cfg: EntityLabelsConfig) -> type[BaseModel] | None
         description = group.description or group.key
 
         if group.free_values:
-            # Free-form: any string value accepted
-            if group.multi_value:
-                fields[group.key] = (list[str], Field(default_factory=list, description=description))
-            elif group.optional:
-                fields[group.key] = (str | None, Field(default=None, description=description))
-            else:
-                fields[group.key] = (str, Field(description=description))
+            # Free-form: any string value accepted, always optional, no multi-value
+            fields[group.key] = (str | None, Field(default=None, description=description))
         else:
             # Enum-constrained: must have defined values
             if not group.values:

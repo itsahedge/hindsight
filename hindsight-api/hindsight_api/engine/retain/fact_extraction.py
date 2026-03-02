@@ -733,11 +733,8 @@ def _build_labels_prompt_section(labels_cfg: EntityLabelsConfig | list | None, f
 
     for attr in labels_cfg.attributes:
         if attr.free_values:
-            mode = "free text, multi-value (list)" if attr.multi_value else "free text or null"
-            lines.append(f"- {attr.key} ({mode}): {attr.description}")
-            if attr.values:
-                examples = ", ".join(f'"{v.value}"' for v in attr.values if v.value)
-                lines.append(f"    Examples: {examples} (write any relevant value, not limited to these)")
+            # Free-text: no predefined values — LLM writes any relevant string or null
+            lines.append(f"- {attr.key} (free text or null): {attr.description}")
         else:
             mode = "multi-value (list)" if attr.multi_value else "single value or null"
             lines.append(f"- {attr.key} ({mode}): {attr.description}")
