@@ -367,18 +367,11 @@ class EntityResolver:
         entities_to_update: list[_EntityStat] = []
         entities_to_create: list[_EntityToCreate] = []
 
-        taxonomy_lookup = taxonomy_lookup or set()
-
         for idx, entity_data in enumerate(entities_data):
             entity_text = entity_data["text"]
             nearby_entities = entity_data.get("nearby_entities", [])
             # Use per-entity date if available, otherwise fall back to batch-level date
             entity_event_date = entity_data.get("event_date", unit_event_date)
-
-            # Taxonomy entities: skip fuzzy matching, use exact canonical name
-            if taxonomy_lookup and entity_text.lower() in taxonomy_lookup:
-                entities_to_create.append((idx, entity_data, entity_event_date))
-                continue
 
             candidates = all_candidates.get(entity_text, [])
 
