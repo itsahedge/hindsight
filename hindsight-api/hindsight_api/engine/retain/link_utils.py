@@ -652,18 +652,18 @@ async def create_semantic_links_batch(
         raise
 
 
-async def insert_entity_links_batch(conn, links: list[EntityLink], chunk_size: int = 50000):
+async def insert_entity_links_batch(conn, links: list[EntityLink], chunk_size: int = 5000):
     """
-    Insert all entity links using COPY to temp table + INSERT for maximum speed.
+    Insert all entity links using COPY to temp table + chunked INSERT for reliability.
 
-    Uses PostgreSQL COPY (via copy_records_to_table) for bulk loading,
-    then INSERT ... ON CONFLICT from temp table. This is the fastest
-    method for bulk inserts with conflict handling.
+    Uses PostgreSQL COPY (via copy_records_to_table) for bulk loading into a
+    temp table, then INSERT ... ON CONFLICT in chunks of chunk_size. Chunking
+    prevents single-query timeouts on very large tables (100M+ rows).
 
     Args:
         conn: Database connection
         links: List of EntityLink objects
-        chunk_size: Number of rows per batch (default 50000)
+        chunk_size: Number of rows per INSERT chunk (default 5000)
     """
     if not links:
         return
@@ -672,10 +672,11 @@ async def insert_entity_links_batch(conn, links: list[EntityLink], chunk_size: i
 
     total_start = time_mod.time()
 
-    # Create temp table for bulk loading
+    # Create temp table with serial for stable chunked access
     create_start = time_mod.time()
     await conn.execute("""
         CREATE TEMP TABLE IF NOT EXISTS _temp_entity_links (
+            _row_num SERIAL,
             from_unit_id uuid,
             to_unit_id uuid,
             link_type text,
@@ -704,15 +705,27 @@ async def insert_entity_links_batch(conn, links: list[EntityLink], chunk_size: i
     )
     logger.debug(f"      [9.4] COPY {len(records)} records to temp table: {time_mod.time() - copy_start:.3f}s")
 
-    # Insert from temp table with ON CONFLICT (single query for all rows)
+    # Insert from temp table in chunks to avoid single-query timeouts on large tables
     insert_start = time_mod.time()
-    await conn.execute(f"""
-        INSERT INTO {fq_table("memory_links")} (from_unit_id, to_unit_id, link_type, weight, entity_id)
-        SELECT from_unit_id, to_unit_id, link_type, weight, entity_id
-        FROM _temp_entity_links
-        ON CONFLICT (from_unit_id, to_unit_id, link_type, COALESCE(entity_id, '00000000-0000-0000-0000-000000000000'::uuid)) DO NOTHING
-    """)
-    logger.debug(f"      [9.5] INSERT from temp table: {time_mod.time() - insert_start:.3f}s")
+    total_rows = len(records)
+    chunks = 0
+    for chunk_start in range(0, total_rows, chunk_size):
+        chunk_end = chunk_start + chunk_size
+        await conn.execute(
+            f"""
+            INSERT INTO {fq_table("memory_links")} (from_unit_id, to_unit_id, link_type, weight, entity_id)
+            SELECT from_unit_id, to_unit_id, link_type, weight, entity_id
+            FROM _temp_entity_links
+            WHERE _row_num > $1 AND _row_num <= $2
+            ON CONFLICT (from_unit_id, to_unit_id, link_type, COALESCE(entity_id, '00000000-0000-0000-0000-000000000000'::uuid)) DO NOTHING
+            """,
+            chunk_start,
+            chunk_end,
+        )
+        chunks += 1
+    logger.debug(
+        f"      [9.5] INSERT {total_rows} rows in {chunks} chunks: {time_mod.time() - insert_start:.3f}s"
+    )
     logger.debug(f"      [9.TOTAL] Entity links batch insert: {time_mod.time() - total_start:.3f}s")
 
 

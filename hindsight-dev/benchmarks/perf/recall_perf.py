@@ -550,6 +550,7 @@ def _build_engine(*, disable_observations: bool = False) -> "Any":
         memory_llm_api_key="",
         memory_llm_model="mock",
         skip_llm_verification=True,
+        db_command_timeout=600,  # Long timeout needed for large-bank inserts
     )
     return engine
 
