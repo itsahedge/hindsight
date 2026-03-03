@@ -12,6 +12,10 @@ planner falls back to a sequential scan of all bank rows after applying the
 These three partial indexes give the planner bitmap-index scan options for the
 three most common date predicates, dramatically reducing the row set before any
 embedding computation is required.
+
+All indexes are created CONCURRENTLY so the migration does not block writes on
+memory_units during production deployments. CONCURRENTLY requires running outside
+a transaction block; see migrations.py for how this is handled safely.
 """
 
 from collections.abc import Sequence
@@ -32,20 +36,23 @@ def _get_schema_prefix() -> str:
 def upgrade() -> None:
     schema = _get_schema_prefix()
     # Partial index on occurred_start (covers "occurred_start BETWEEN $4 AND $5")
+    op.execute("COMMIT")
     op.execute(
-        f"CREATE INDEX IF NOT EXISTS idx_memory_units_bank_occurred_start "
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_memory_units_bank_occurred_start "
         f"ON {schema}memory_units(bank_id, fact_type, occurred_start) "
         f"WHERE occurred_start IS NOT NULL"
     )
     # Partial index on occurred_end (covers "occurred_end BETWEEN $4 AND $5")
+    op.execute("COMMIT")
     op.execute(
-        f"CREATE INDEX IF NOT EXISTS idx_memory_units_bank_occurred_end "
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_memory_units_bank_occurred_end "
         f"ON {schema}memory_units(bank_id, fact_type, occurred_end) "
         f"WHERE occurred_end IS NOT NULL"
     )
     # Partial index on mentioned_at (covers "mentioned_at BETWEEN $4 AND $5")
+    op.execute("COMMIT")
     op.execute(
-        f"CREATE INDEX IF NOT EXISTS idx_memory_units_bank_mentioned_at "
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_memory_units_bank_mentioned_at "
         f"ON {schema}memory_units(bank_id, fact_type, mentioned_at) "
         f"WHERE mentioned_at IS NOT NULL"
     )
@@ -53,6 +60,9 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     schema = _get_schema_prefix()
-    op.execute(f"DROP INDEX IF EXISTS {schema}idx_memory_units_bank_mentioned_at")
-    op.execute(f"DROP INDEX IF EXISTS {schema}idx_memory_units_bank_occurred_end")
-    op.execute(f"DROP INDEX IF EXISTS {schema}idx_memory_units_bank_occurred_start")
+    op.execute("COMMIT")
+    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {schema}idx_memory_units_bank_mentioned_at")
+    op.execute("COMMIT")
+    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {schema}idx_memory_units_bank_occurred_end")
+    op.execute("COMMIT")
+    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {schema}idx_memory_units_bank_occurred_start")

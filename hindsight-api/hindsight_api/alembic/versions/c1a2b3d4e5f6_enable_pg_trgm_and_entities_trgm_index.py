@@ -3,6 +3,10 @@
 Revision ID: c1a2b3d4e5f6
 Revises: b4c5d6e7f8a9
 Create Date: 2026-03-02
+
+Index is created CONCURRENTLY so the migration does not block writes on entities
+during production deployments. CONCURRENTLY requires running outside a transaction
+block; see migrations.py for how this is handled safely.
 """
 
 from collections.abc import Sequence
@@ -28,17 +32,15 @@ def upgrade() -> None:
     schema = _get_schema_prefix()
     # GIN index on canonical_name enables sub-millisecond trigram similarity queries
     # (% operator, similarity()) instead of full-table scans across all bank entities.
-    # Note: Not using CONCURRENTLY here as it requires running outside a transaction block.
-    # For production with large entities tables, consider running this manually:
-    #   CREATE INDEX CONCURRENTLY IF NOT EXISTS entities_canonical_name_trgm_idx
-    #   ON entities USING GIN (canonical_name gin_trgm_ops);
+    op.execute("COMMIT")
     op.execute(
-        f"CREATE INDEX IF NOT EXISTS entities_canonical_name_trgm_idx "
+        f"CREATE INDEX CONCURRENTLY IF NOT EXISTS entities_canonical_name_trgm_idx "
         f"ON {schema}entities USING GIN (canonical_name gin_trgm_ops)"
     )
 
 
 def downgrade() -> None:
     schema = _get_schema_prefix()
-    op.execute(f"DROP INDEX IF EXISTS {schema}entities_canonical_name_trgm_idx")
+    op.execute("COMMIT")
+    op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {schema}entities_canonical_name_trgm_idx")
     # Note: not dropping pg_trgm extension as other indexes may depend on it
