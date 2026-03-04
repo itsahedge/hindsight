@@ -15,9 +15,11 @@ import json
 import logging
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+import asyncpg
 import httpx
 import tiktoken
 
@@ -588,13 +590,12 @@ class MemoryEngine(MemoryEngineInterface):
             document_tags=document_tags,
             request_context=context,
             operation_id=operation_id,
-        )
-
-        await self._fire_retain_webhook(
-            bank_id=bank_id,
-            contents=contents,
-            operation_id=operation_id,
-            schema=context.tenant_id,
+            outbox_callback=self._build_retain_outbox_callback(
+                bank_id=bank_id,
+                contents=contents,
+                operation_id=operation_id,
+                schema=context.tenant_id,
+            ),
         )
 
         # If this retain was triggered by file conversion, update document with file metadata
@@ -985,17 +986,17 @@ class MemoryEngine(MemoryEngineInterface):
             # Task succeeded - mark operation as completed
             # file_convert_retain marks itself as completed in a transaction, skip double-marking
             if operation_id and task_type not in ("file_convert_retain",):
-                await self._mark_operation_completed(operation_id)
-
-            # Fire consolidation webhook after successful completion
-            if task_type == "consolidation" and operation_id and self._webhook_manager:
-                await self._fire_consolidation_webhook(
-                    bank_id=task_dict.get("bank_id", ""),
-                    operation_id=operation_id,
-                    status="completed",
-                    result=consolidation_result,
-                    schema=schema,
-                )
+                if task_type == "consolidation":
+                    # Atomically mark completed AND queue webhook delivery in one transaction
+                    await self._mark_operation_completed_and_fire_webhook(
+                        operation_id=operation_id,
+                        bank_id=task_dict.get("bank_id", ""),
+                        status="completed",
+                        result=consolidation_result,
+                        schema=schema,
+                    )
+                else:
+                    await self._mark_operation_completed(operation_id)
 
         except RetryTaskAt:
             # Task-owned retry: let the poller handle scheduling
@@ -1014,8 +1015,9 @@ class MemoryEngine(MemoryEngineInterface):
                 if operation_id:
                     await self._mark_operation_failed(operation_id, str(e), error_traceback)
             else:
-                # Fire consolidation failure webhook before scheduling retry
-                if task_type == "consolidation" and operation_id and self._webhook_manager:
+                if task_type == "consolidation" and operation_id:
+                    # Fire failure webhook (non-transactional — operation not yet marked failed;
+                    # poller will mark it failed after this raise)
                     await self._fire_consolidation_webhook(
                         bank_id=task_dict.get("bank_id", ""),
                         operation_id=operation_id,
@@ -1050,7 +1052,7 @@ class MemoryEngine(MemoryEngineInterface):
             data = ConsolidationEventData(
                 observations_created=result.get("observations_created") if result else None,
                 observations_updated=result.get("observations_updated") if result else None,
-                observations_deleted=None,
+                observations_deleted=result.get("observations_deleted") if result else None,
                 error_message=error_message,
             )
             event = WebhookEvent(
@@ -1065,31 +1067,37 @@ class MemoryEngine(MemoryEngineInterface):
         except Exception as e:
             logger.error(f"Failed to fire consolidation webhook for operation {operation_id}: {e}")
 
-    async def _fire_retain_webhook(
+    def _build_retain_outbox_callback(
         self,
         bank_id: str,
         contents: list[dict],
         operation_id: str | None,
         schema: str | None = None,
-    ) -> None:
-        """Fire retain.completed webhook events (one per document). Non-fatal."""
-        if not getattr(self, "_webhook_manager", None):
-            return
-        try:
-            from datetime import datetime, timezone
+    ) -> "Callable[[asyncpg.Connection], Awaitable[None]] | None":
+        """Build a transactional outbox callback for retain.completed webhook events.
 
-            from ..webhooks.models import RetainEventData, WebhookEvent, WebhookEventType
+        Returns a coroutine function that queues one webhook delivery row per content
+        item using the provided connection (inside the retain transaction). Returns None
+        if no webhook manager is configured.
+        """
+        webhook_manager = getattr(self, "_webhook_manager", None)
+        if not webhook_manager:
+            return None
 
-            now = datetime.now(timezone.utc)
-            op_id = operation_id or uuid.uuid4().hex
-            for content in contents:
-                doc_id = content.get("document_id")
-                tags = content.get("tags")
-                data = RetainEventData(
-                    document_id=doc_id,
-                    tags=tags if isinstance(tags, list) else None,
-                )
-                event = WebhookEvent(
+        from ..webhooks.models import RetainEventData, WebhookEvent, WebhookEventType
+
+        now = datetime.now(UTC)
+        op_id = operation_id or uuid.uuid4().hex
+        events = []
+        for content in contents:
+            doc_id = content.get("document_id")
+            tags = content.get("tags")
+            data = RetainEventData(
+                document_id=doc_id,
+                tags=tags if isinstance(tags, list) else None,
+            )
+            events.append(
+                WebhookEvent(
                     event=WebhookEventType.RETAIN_COMPLETED,
                     bank_id=bank_id,
                     operation_id=op_id,
@@ -1097,9 +1105,13 @@ class MemoryEngine(MemoryEngineInterface):
                     timestamp=now,
                     data=data,
                 )
-                await self._webhook_manager.fire_event(event, schema=schema)
-        except Exception as e:
-            logger.error(f"Failed to fire retain webhook for bank {bank_id}: {e}")
+            )
+
+        async def _callback(conn: asyncpg.Connection) -> None:
+            for event in events:
+                await webhook_manager.fire_event_with_conn(event, conn, schema=schema)
+
+        return _callback
 
     async def _update_webhook_delivery_metadata(
         self, operation_id: str, status_code: int | None, response_body: str | None
@@ -1259,6 +1271,58 @@ class MemoryEngine(MemoryEngineInterface):
                     await self._maybe_update_parent_operation(operation_id, conn)
         except Exception as e:
             logger.error(f"Failed to mark operation as completed {operation_id}: {e}")
+
+    async def _mark_operation_completed_and_fire_webhook(
+        self,
+        operation_id: str,
+        bank_id: str,
+        status: str,
+        result: dict | None,
+        schema: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Mark an operation as completed and queue webhook deliveries in a single transaction.
+
+        Uses the transactional outbox pattern: the webhook delivery row is inserted in the
+        same database transaction as the status update. This guarantees at-least-once delivery
+        even if the process crashes immediately after committing.
+        """
+        from ..webhooks.models import ConsolidationEventData, WebhookEvent, WebhookEventType
+
+        try:
+            pool = await self._get_pool()
+            async with acquire_with_retry(pool) as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        f"""
+                        UPDATE {fq_table("async_operations")}
+                        SET status = 'completed', updated_at = NOW(), completed_at = NOW()
+                        WHERE operation_id = $1
+                        """,
+                        uuid.UUID(operation_id),
+                    )
+                    logger.info(f"Marked async operation as completed: {operation_id}")
+                    await self._maybe_update_parent_operation(operation_id, conn)
+
+                    # Queue webhook deliveries inside the same transaction
+                    if self._webhook_manager:
+                        data = ConsolidationEventData(
+                            observations_created=result.get("observations_created") if result else None,
+                            observations_updated=result.get("observations_updated") if result else None,
+                            observations_deleted=result.get("observations_deleted") if result else None,
+                            error_message=error_message,
+                        )
+                        event = WebhookEvent(
+                            event=WebhookEventType.CONSOLIDATION_COMPLETED,
+                            bank_id=bank_id,
+                            operation_id=operation_id,
+                            status=status,
+                            timestamp=datetime.now(UTC),
+                            data=data,
+                        )
+                        await self._webhook_manager.fire_event_with_conn(event, conn, schema=schema)
+        except Exception as e:
+            logger.error(f"Failed to mark operation completed and fire webhook {operation_id}: {e}")
 
     async def _maybe_update_parent_operation(self, child_operation_id: str, conn):
         """Check if this is a child operation and update parent status if all siblings are done.
@@ -1813,6 +1877,7 @@ class MemoryEngine(MemoryEngineInterface):
         document_tags: list[str] | None = None,
         return_usage: bool = False,
         operation_id: str | None = None,
+        outbox_callback: "Callable[[asyncpg.Connection], Awaitable[None]] | None" = None,
     ):
         """
         Store multiple content items as memory units in ONE batch operation.
@@ -1961,6 +2026,9 @@ class MemoryEngine(MemoryEngineInterface):
                     confidence_score=confidence_score,
                     document_tags=document_tags,
                     operation_id=operation_id,
+                    # Outbox callback runs inside the last sub-batch's transaction so the
+                    # webhook delivery row is committed atomically with the final retain data.
+                    outbox_callback=outbox_callback if i == len(sub_batches) else None,
                 )
                 all_results.extend(sub_results)
                 total_usage = total_usage + sub_usage
@@ -1982,6 +2050,7 @@ class MemoryEngine(MemoryEngineInterface):
                 confidence_score=confidence_score,
                 document_tags=document_tags,
                 operation_id=operation_id,
+                outbox_callback=outbox_callback,
             )
 
         # Call post-operation hook if validator is configured
@@ -2032,6 +2101,7 @@ class MemoryEngine(MemoryEngineInterface):
         confidence_score: float | None = None,
         document_tags: list[str] | None = None,
         operation_id: str | None = None,
+        outbox_callback: "Callable[[asyncpg.Connection], Awaitable[None]] | None" = None,
     ) -> tuple[list[list[str]], "TokenUsage"]:
         """
         Internal method for batch processing without chunking logic.
@@ -2082,6 +2152,7 @@ class MemoryEngine(MemoryEngineInterface):
                     config=resolved_config,
                     operation_id=operation_id,
                     schema=request_context.tenant_id if request_context else None,
+                    outbox_callback=outbox_callback,
                 )
 
     def recall(

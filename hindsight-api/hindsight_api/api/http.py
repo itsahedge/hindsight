@@ -4276,14 +4276,13 @@ def _register_routes(app: FastAPI):
                         document_tags=request.document_tags,
                         request_context=request_context,
                         return_usage=True,
+                        outbox_callback=app.state.memory._build_retain_outbox_callback(
+                            bank_id=bank_id,
+                            contents=contents,
+                            operation_id=None,
+                            schema=request_context.tenant_id,
+                        ),
                     )
-
-                await app.state.memory._fire_retain_webhook(
-                    bank_id=bank_id,
-                    contents=contents,
-                    operation_id=None,
-                    schema=request_context.tenant_id,
-                )
 
                 return RetainResponse.model_validate(
                     {"success": True, "bank_id": bank_id, "items_count": len(contents), "async": False, "usage": usage}

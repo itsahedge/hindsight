@@ -116,7 +116,7 @@ class TestRetryConstants:
 
     def test_retry_delays_values(self):
         """RETRY_DELAYS must match the documented schedule."""
-        assert RETRY_DELAYS == [60, 300, 1800, 7200, 28800]
+        assert RETRY_DELAYS == [5, 300, 1800, 7200, 18000]
 
     def test_max_attempts(self):
         """MAX_ATTEMPTS should be len(RETRY_DELAYS) + 1."""
@@ -691,11 +691,14 @@ class TestRetainCompletedWebhook:
             original_manager = memory._webhook_manager
             memory._webhook_manager = webhook_manager
             try:
-                await memory._fire_retain_webhook(
+                callback = memory._build_retain_outbox_callback(
                     bank_id=bank_id,
                     contents=contents,
                     operation_id="test-op-123",
                 )
+                assert callback is not None
+                async with memory._pool.acquire() as conn:
+                    await callback(conn)
             finally:
                 memory._webhook_manager = original_manager
 

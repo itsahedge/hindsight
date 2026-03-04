@@ -6,92 +6,24 @@ sidebar_position: 10
 
 Hindsight can notify your application in real-time when memory events occur by sending HTTP POST requests to a URL you configure.
 
-## Overview
+## Delivery and Retries
 
-Webhooks are registered per memory bank and fire automatically when matching events occur. Each delivery is tracked and retried with exponential backoff on failure.
-
-### Retry schedule
+Webhooks are registered per memory bank and fire automatically when matching events occur. Each delivery attempt is tracked, and failed deliveries are retried with exponential backoff:
 
 | Attempt | Delay after failure |
 |---------|---------------------|
-| 1 | 60 seconds |
+| 1 | 5 seconds |
 | 2 | 5 minutes |
 | 3 | 30 minutes |
 | 4 | 2 hours |
-| 5 | 8 hours |
+| 5 | 5 hours |
 | 6 | Permanent failure |
 
-## Managing Webhooks
+A delivery is considered failed if your endpoint returns a non-2xx status code or does not respond within the configured timeout (default 30 seconds). After 6 failed attempts, the delivery is marked as permanently failed and no further retries are made.
 
-### Create a webhook
-
-```bash
-curl -X POST "http://localhost:8000/v1/default/banks/my-bank/webhooks" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "url": "https://your-app.com/hooks/hindsight",
-    "event_types": ["consolidation.completed", "retain.completed"],
-    "secret": "your-signing-secret"
-  }'
-```
-
-### Update a webhook
-
-Use PATCH to update only the fields you want to change:
-
-```bash
-curl -X PATCH "http://localhost:8000/v1/default/banks/my-bank/webhooks/{webhook_id}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "enabled": false
-  }'
-```
-
-### HTTP delivery configuration
-
-Customize how Hindsight delivers webhook requests:
-
-```json
-{
-  "url": "https://your-app.com/hooks/hindsight",
-  "event_types": ["retain.completed"],
-  "http_config": {
-    "method": "POST",
-    "timeout_seconds": 15,
-    "headers": {
-      "Authorization": "Bearer your-token"
-    },
-    "params": {}
-  }
-}
-```
-
-| Field | Default | Description |
-|-------|---------|-------------|
-| `method` | `POST` | HTTP method (`GET` or `POST`) |
-| `timeout_seconds` | `30` | Request timeout |
-| `headers` | `{}` | Custom HTTP headers added to every delivery |
-| `params` | `{}` | Custom query parameters added to every delivery |
-
-## Payload Signature Verification
-
-When a `secret` is set, Hindsight signs every delivery with HMAC-SHA256 and includes the signature in the `X-Hindsight-Signature` header:
-
-```
-X-Hindsight-Signature: sha256=<hex-digest>
-```
-
-Verify in Python:
-
-```python
-import hashlib, hmac
-
-def verify_signature(payload_bytes: bytes, secret: str, header: str) -> bool:
-    expected = "sha256=" + hmac.new(
-        secret.encode(), payload_bytes, hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, header)
-```
+:::info At-least-once delivery
+Webhook delivery tasks are queued in the same database transaction as the primary operation (e.g. the retain or consolidation write). This means if the server crashes after committing but before sending, the delivery task survives and will be retried. As a result, **your endpoint may receive the same event more than once** — use the `operation_id` field to deduplicate if needed.
+:::
 
 ## Event Types
 
@@ -162,41 +94,3 @@ Fired once per document after a retain operation completes (both synchronous and
 - For sync retain, `operation_id` is a generated identifier for tracing purposes.
 - One event is fired per content item in the retain request.
 
-## Viewing Deliveries
-
-Inspect delivery history for a webhook:
-
-```bash
-curl "http://localhost:8000/v1/default/banks/my-bank/webhooks/{webhook_id}/deliveries"
-```
-
-Response:
-
-```json
-{
-  "items": [
-    {
-      "id": "op-uuid",
-      "webhook_id": "wh-uuid",
-      "url": "https://your-app.com/hooks/hindsight",
-      "event_type": "retain.completed",
-      "status": "completed",
-      "attempts": 1,
-      "next_retry_at": null,
-      "last_error": null,
-      "last_response_status": 200,
-      "last_response_body": "OK",
-      "last_attempt_at": "2026-03-04T12:00:02Z",
-      "created_at": "2026-03-04T12:00:01Z",
-      "updated_at": "2026-03-04T12:00:02Z"
-    }
-  ],
-  "next_cursor": null
-}
-```
-
-Use `cursor` and `limit` query parameters for pagination:
-
-```bash
-curl "http://localhost:8000/v1/default/banks/my-bank/webhooks/{webhook_id}/deliveries?limit=20&cursor=<next_cursor>"
-```
