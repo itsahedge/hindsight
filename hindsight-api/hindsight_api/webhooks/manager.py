@@ -119,6 +119,7 @@ class WebhookManager:
                 task_payload = json.dumps(
                     {
                         "type": "webhook_delivery",
+                        "operation_id": str(operation_id),
                         "bank_id": event.bank_id,
                         "url": webhook.url,
                         "secret": webhook.secret,
@@ -205,6 +206,7 @@ class WebhookManager:
                 task_payload = json.dumps(
                     {
                         "type": "webhook_delivery",
+                        "operation_id": str(operation_id),
                         "bank_id": event.bank_id,
                         "url": webhook.url,
                         "secret": webhook.secret,

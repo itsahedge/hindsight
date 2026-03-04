@@ -333,6 +333,51 @@ class TestHandleWebhookDelivery:
         assert retry_at >= before + timedelta(seconds=expected_delay - 2)
         assert retry_at <= after + timedelta(seconds=expected_delay + 2)
 
+    @pytest.mark.asyncio
+    async def test_execute_task_marks_operation_completed(self, memory: MemoryEngine):
+        """After a successful delivery, execute_task marks the async_operations row as completed."""
+        operation_id = str(uuid.uuid4())
+        bank_id = f"wh-exec-{uuid.uuid4().hex[:8]}"
+
+        # Insert a real async_operations row so _mark_operation_completed has something to update
+        async with memory._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO async_operations
+                  (operation_id, bank_id, operation_type, status, task_payload, result_metadata, created_at, updated_at)
+                VALUES ($1, $2, 'webhook_delivery', 'processing', '{}'::jsonb, '{}'::jsonb, NOW(), NOW())
+                """,
+                uuid.UUID(operation_id),
+                bank_id,
+            )
+
+        task_dict = {
+            **_make_delivery_task(bank_id=bank_id, retry_count=0),
+            "operation_id": operation_id,
+        }
+
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+
+        with patch.object(memory._http_client, "post", new=AsyncMock(return_value=mock_response)):
+            await memory.execute_task(task_dict)
+
+        async with memory._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT status FROM async_operations WHERE operation_id = $1",
+                uuid.UUID(operation_id),
+            )
+
+        assert row is not None
+        assert row["status"] == "completed", f"Expected 'completed', got '{row['status']}'"
+
+        # Cleanup
+        async with memory._pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM async_operations WHERE operation_id = $1",
+                uuid.UUID(operation_id),
+            )
+
 
 # ---------------------------------------------------------------------------
 # HTTP API integration tests
