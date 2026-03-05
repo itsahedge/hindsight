@@ -1035,8 +1035,8 @@ async def _create_observation_directly(
     # Create the observation as a memory_unit
     now = datetime.now(timezone.utc)
     obs_event_date = event_date or now
-    obs_occurred_start = occurred_start or now
-    obs_occurred_end = occurred_end or now
+    obs_occurred_start = occurred_start
+    obs_occurred_end = occurred_end
     obs_mentioned_at = mentioned_at or now
     obs_tags = tags or []
 
