@@ -3,11 +3,10 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { TagList } from "@/components/ui/tag-list";
-import { Copy, Check, X, Loader2, Calendar } from "lucide-react";
+import { Copy, Check, X, Loader2, Calendar, History } from "lucide-react";
 import { DocumentChunkModal } from "./document-chunk-modal";
 import { MemoryDetailModal } from "./memory-detail-modal";
 import { client } from "@/lib/api";
-import { ObservationHistoryView } from "@/components/observation-history-view";
 
 interface MemoryDetailPanelProps {
   memory: any;
@@ -30,6 +29,7 @@ export function MemoryDetailPanel({
   const [fullMemory, setFullMemory] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [sourceMemoryModalId, setSourceMemoryModalId] = useState<string | null>(null);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
 
   // Fetch full memory data when panel opens
   // For mental models, use getMentalModel to get source memories
@@ -273,30 +273,6 @@ export function MemoryDetailPanel({
                 </div>
               )}
 
-              {/* History (observations only) */}
-              {isObservation && (
-                <div className="border-t border-border pt-5">
-                  <div className="text-xs font-bold text-muted-foreground uppercase mb-3">
-                    History
-                    {displayMemory.history?.length > 0 ? ` (${displayMemory.history.length})` : ""}
-                  </div>
-                  {displayMemory.history && displayMemory.history.length > 0 ? (
-                    <ObservationHistoryView
-                      history={displayMemory.history}
-                      current={{
-                        text: displayMemory.text,
-                        tags: displayMemory.tags || [],
-                        occurred_start: displayMemory.occurred_start || null,
-                        occurred_end: displayMemory.occurred_end || null,
-                        mentioned_at: displayMemory.mentioned_at || null,
-                      }}
-                    />
-                  ) : (
-                    <p className="text-sm text-muted-foreground italic">No history recorded yet.</p>
-                  )}
-                </div>
-              )}
-
               {/* Document/Chunk buttons */}
               {(displayMemory.document_id || displayMemory.chunk_id) && (
                 <div className="flex gap-3 pt-2">
@@ -318,6 +294,20 @@ export function MemoryDetailPanel({
                       View Chunk
                     </Button>
                   )}
+                </div>
+              )}
+
+              {/* View History button (observations only) */}
+              {isObservation && (
+                <div className="border-t border-border pt-5">
+                  <Button
+                    variant="outline"
+                    className="w-full flex items-center gap-2"
+                    onClick={() => setHistoryModalOpen(true)}
+                  >
+                    <History className="h-4 w-4" />
+                    View History
+                  </Button>
                 </div>
               )}
 
@@ -358,6 +348,15 @@ export function MemoryDetailPanel({
           memoryId={sourceMemoryModalId}
           onClose={() => setSourceMemoryModalId(null)}
         />
+
+        {/* History Modal */}
+        {historyModalOpen && memoryId && bankId && (
+          <MemoryDetailModal
+            memoryId={memoryId}
+            onClose={() => setHistoryModalOpen(false)}
+            initialTab="history"
+          />
+        )}
       </>
     );
   }

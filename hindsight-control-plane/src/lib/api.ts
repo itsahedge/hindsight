@@ -426,6 +426,30 @@ export class ControlPlaneClient {
   }
 
   /**
+   * Get the history of an observation with resolved source facts
+   */
+  async getObservationHistory(memoryId: string, bankId: string) {
+    return this.fetchApi<
+      {
+        previous_text: string;
+        previous_tags: string[];
+        previous_occurred_start: string | null;
+        previous_occurred_end: string | null;
+        previous_mentioned_at: string | null;
+        changed_at: string;
+        new_source_memory_ids: string[];
+        source_facts: {
+          id: string;
+          text: string | null;
+          type: string | null;
+          context: string | null;
+          is_new: boolean;
+        }[];
+      }[]
+    >(`/api/memories/${memoryId}/history?bank_id=${bankId}`);
+  }
+
+  /**
    * Get bank profile
    */
   async getBankProfile(bankId: string) {

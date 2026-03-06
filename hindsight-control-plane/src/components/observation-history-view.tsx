@@ -1,5 +1,9 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+
 export interface HistoryEntry {
   previous_text: string;
   previous_tags: string[];
@@ -8,6 +12,13 @@ export interface HistoryEntry {
   previous_mentioned_at: string | null;
   changed_at: string;
   new_source_memory_ids: string[];
+  source_facts?: {
+    id: string;
+    text: string | null;
+    type: string | null;
+    context: string | null;
+    is_new: boolean;
+  }[];
 }
 
 interface CurrentState {
@@ -147,6 +158,44 @@ function DateDiff({
   );
 }
 
+function SourceFactItem({ fact }: { fact: NonNullable<HistoryEntry["source_facts"]>[number] }) {
+  const typeColors =
+    fact.type === "experience"
+      ? "bg-green-500/10 text-green-700 dark:text-green-400"
+      : "bg-blue-500/10 text-blue-700 dark:text-blue-400";
+
+  return (
+    <div
+      className={`p-2 rounded border space-y-1 ${
+        fact.is_new ? "border-green-500/40 bg-green-500/5" : "border-border/50 bg-muted/30"
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        {fact.type && (
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded font-medium flex-shrink-0 ${typeColors}`}
+          >
+            {fact.type}
+          </span>
+        )}
+        {fact.is_new && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30">
+            new
+          </span>
+        )}
+        {fact.context && (
+          <span className="text-[10px] text-muted-foreground italic truncate">{fact.context}</span>
+        )}
+      </div>
+      {fact.text ? (
+        <p className="text-xs text-foreground leading-relaxed">{fact.text}</p>
+      ) : (
+        <p className="text-xs text-muted-foreground italic">(memory no longer available)</p>
+      )}
+    </div>
+  );
+}
+
 export function ObservationHistoryView({
   history,
   current,
@@ -154,87 +203,94 @@ export function ObservationHistoryView({
   history: HistoryEntry[];
   current: CurrentState;
 }) {
+  // index 0 = most recent change
   const entries = [...history].reverse();
+  const [idx, setIdx] = useState(0);
+
+  const entry = entries[idx];
+  const isLatest = idx === 0;
+  const afterText = isLatest ? current.text : entries[idx - 1].previous_text;
+  const afterTags = isLatest ? current.tags : entries[idx - 1].previous_tags;
+  const afterOccurredStart = isLatest
+    ? current.occurred_start
+    : entries[idx - 1].previous_occurred_start;
+  const afterOccurredEnd = isLatest ? current.occurred_end : entries[idx - 1].previous_occurred_end;
+  const afterMentionedAt = isLatest ? current.mentioned_at : entries[idx - 1].previous_mentioned_at;
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        {history.length} change{history.length !== 1 ? "s" : ""} recorded. Most recent first.
-      </p>
-      {entries.map((entry, idx) => {
-        const isLatest = idx === 0;
-        const afterText = isLatest ? current.text : entries[idx - 1].previous_text;
-        const afterTags = isLatest ? current.tags : entries[idx - 1].previous_tags;
-        const afterOccurredStart = isLatest
-          ? current.occurred_start
-          : entries[idx - 1].previous_occurred_start;
-        const afterOccurredEnd = isLatest
-          ? current.occurred_end
-          : entries[idx - 1].previous_occurred_end;
-        const afterMentionedAt = isLatest
-          ? current.mentioned_at
-          : entries[idx - 1].previous_mentioned_at;
+    <div className="space-y-3">
+      {/* Navigation header */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">
+          Change <span className="font-semibold text-foreground">{history.length - idx}</span> of{" "}
+          {history.length} &middot; {new Date(entry.changed_at).toLocaleString()}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
+            disabled={idx === entries.length - 1}
+            onClick={() => setIdx(idx + 1)}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
+            disabled={idx === 0}
+            onClick={() => setIdx(idx - 1)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
 
-        return (
-          <div key={idx} className="border border-border rounded-lg p-3 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase">
-                Change #{history.length - idx}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {new Date(entry.changed_at).toLocaleString()}
-              </span>
+      {/* Change card */}
+      <div className="border border-border rounded-lg p-3 space-y-3">
+        <div>
+          <div className="text-xs font-bold text-muted-foreground uppercase mb-1">Text</div>
+          <TextDiff before={entry.previous_text} after={afterText} />
+        </div>
+
+        <div>
+          <div className="text-xs font-bold text-muted-foreground uppercase mb-1">Tags</div>
+          <TagsDiff before={entry.previous_tags} after={afterTags} />
+        </div>
+
+        <div className="space-y-1">
+          <div className="text-xs font-bold text-muted-foreground uppercase mb-1">Dates</div>
+          <DateDiff
+            label="Occurred start"
+            before={entry.previous_occurred_start}
+            after={afterOccurredStart}
+          />
+          <DateDiff
+            label="Occurred end"
+            before={entry.previous_occurred_end}
+            after={afterOccurredEnd}
+          />
+          <DateDiff
+            label="Mentioned at"
+            before={entry.previous_mentioned_at}
+            after={afterMentionedAt}
+          />
+        </div>
+
+        {entry.source_facts && entry.source_facts.length > 0 && (
+          <div>
+            <div className="text-xs font-bold text-muted-foreground uppercase mb-2">
+              Source Facts ({entry.source_facts.length})
             </div>
-
-            <div>
-              <div className="text-xs font-bold text-muted-foreground uppercase mb-1">Text</div>
-              <TextDiff before={entry.previous_text} after={afterText} />
+            <div className="space-y-1.5">
+              {entry.source_facts.map((fact) => (
+                <SourceFactItem key={fact.id} fact={fact} />
+              ))}
             </div>
-
-            <div>
-              <div className="text-xs font-bold text-muted-foreground uppercase mb-1">Tags</div>
-              <TagsDiff before={entry.previous_tags} after={afterTags} />
-            </div>
-
-            <div className="space-y-1">
-              <div className="text-xs font-bold text-muted-foreground uppercase mb-1">Dates</div>
-              <DateDiff
-                label="Occurred start"
-                before={entry.previous_occurred_start}
-                after={afterOccurredStart}
-              />
-              <DateDiff
-                label="Occurred end"
-                before={entry.previous_occurred_end}
-                after={afterOccurredEnd}
-              />
-              <DateDiff
-                label="Mentioned at"
-                before={entry.previous_mentioned_at}
-                after={afterMentionedAt}
-              />
-            </div>
-
-            {entry.new_source_memory_ids && entry.new_source_memory_ids.length > 0 && (
-              <div>
-                <div className="text-xs font-bold text-muted-foreground uppercase mb-1">
-                  New Sources ({entry.new_source_memory_ids.length})
-                </div>
-                <div className="space-y-1">
-                  {entry.new_source_memory_ids.map((id) => (
-                    <code
-                      key={id}
-                      className="block text-xs font-mono text-muted-foreground truncate"
-                    >
-                      {id}
-                    </code>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-        );
-      })}
+        )}
+      </div>
     </div>
   );
 }

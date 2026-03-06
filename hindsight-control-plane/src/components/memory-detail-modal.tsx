@@ -34,26 +34,30 @@ interface MemoryDetail {
   tags: string[];
   observation_scopes: string | string[][] | null;
   source_memories?: SourceMemory[];
-  history?: HistoryEntry[];
 }
 
 interface MemoryDetailModalProps {
   memoryId: string | null;
   onClose: () => void;
+  initialTab?: string;
 }
 
-export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps) {
+export function MemoryDetailModal({ memoryId, onClose, initialTab }: MemoryDetailModalProps) {
   const { currentBank } = useBank();
   const [memory, setMemory] = useState<MemoryDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("memory");
+  const [activeTab, setActiveTab] = useState(initialTab ?? "memory");
 
   // Document and chunk data
   const [document, setDocument] = useState<any>(null);
   const [chunk, setChunk] = useState<any>(null);
   const [loadingDocument, setLoadingDocument] = useState(false);
   const [loadingChunk, setLoadingChunk] = useState(false);
+
+  // History data (fetched lazily from dedicated endpoint)
+  const [history, setHistory] = useState<HistoryEntry[] | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Source memory modal (for viewing source memories of observations)
   const [sourceMemoryModalId, setSourceMemoryModalId] = useState<string | null>(null);
@@ -68,7 +72,8 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
       setMemory(null);
       setDocument(null);
       setChunk(null);
-      setActiveTab("memory");
+      setHistory(null);
+      setActiveTab(initialTab ?? "memory");
 
       try {
         const data = await client.getMemory(memoryId, currentBank);
@@ -83,6 +88,33 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
 
     loadMemory();
   }, [memoryId, currentBank]);
+
+  // Load history lazily when history tab is selected
+  useEffect(() => {
+    if (
+      activeTab !== "history" ||
+      !memory ||
+      memory.type !== "observation" ||
+      !currentBank ||
+      history !== null
+    )
+      return;
+
+    const loadHistory = async () => {
+      setLoadingHistory(true);
+      try {
+        const data = await client.getObservationHistory(memory.id, currentBank);
+        setHistory(data);
+      } catch (err) {
+        console.error("Error loading history:", err);
+        setHistory([]);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    loadHistory();
+  }, [activeTab, memory, currentBank, history]);
 
   // Load document when tab is selected
   useEffect(() => {
@@ -168,9 +200,7 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
                   <TabsTrigger value="history" className="flex items-center gap-1.5">
                     <History className="w-3.5 h-3.5" />
                     History
-                    {memory.history && memory.history.length > 0
-                      ? ` (${memory.history.length})`
-                      : ""}
+                    {history && history.length > 0 ? ` (${history.length})` : ""}
                   </TabsTrigger>
                 </TabsList>
 
@@ -335,9 +365,13 @@ export function MemoryDetailModal({ memoryId, onClose }: MemoryDetailModalProps)
                   </TabsContent>
 
                   <TabsContent value="history" className="mt-0">
-                    {memory.history && memory.history.length > 0 ? (
+                    {loadingHistory ? (
+                      <div className="flex items-center justify-center py-12">
+                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : history && history.length > 0 ? (
                       <ObservationHistoryView
-                        history={memory.history}
+                        history={history}
                         current={{
                           text: memory.text,
                           tags: memory.tags,

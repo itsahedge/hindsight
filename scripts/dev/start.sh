@@ -82,7 +82,7 @@ fi
 
 # Start Control Plane
 echo ""
-PORT="$CP_PORT" "$SCRIPT_DIR/start-control-plane.sh" &
+PORT="$CP_PORT" HINDSIGHT_CP_DATAPLANE_API_URL="http://localhost:${API_PORT}" "$SCRIPT_DIR/start-control-plane.sh" &
 CP_PID=$!
 PIDS+=($CP_PID)
 

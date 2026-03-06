@@ -888,6 +888,7 @@ export function DataView({ factType }: DataViewProps) {
               data={data}
               filteredRows={filteredTableRows}
               bankId={currentBank || undefined}
+              onMemoryClick={(id) => setModalMemoryId(id)}
             />
           )}
         </>
@@ -913,12 +914,13 @@ function TimelineView({
   data,
   filteredRows,
   bankId,
+  onMemoryClick,
 }: {
   data: any;
   filteredRows: any[];
   bankId?: string;
+  onMemoryClick: (id: string) => void;
 }) {
-  const [selectedItem, setSelectedItem] = useState<any>(null);
   const [granularity, setGranularity] = useState<Granularity>("month");
   const [currentIndex, setCurrentIndex] = useState(0);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -1196,10 +1198,8 @@ function TimelineView({
                 {group.items.map((item: any, idx: number) => (
                   <div
                     key={item.id || idx}
-                    onClick={() => setSelectedItem(item)}
-                    className={`flex items-start cursor-pointer group ${
-                      selectedItem?.id === item.id ? "opacity-100" : "hover:opacity-80"
-                    }`}
+                    onClick={() => onMemoryClick(item.id)}
+                    className={`flex items-start cursor-pointer group ${"hover:opacity-80"}`}
                   >
                     {/* Date & Time */}
                     <div className="w-[60px] text-right pr-3 pt-1 flex-shrink-0">
@@ -1214,21 +1214,13 @@ function TimelineView({
                     {/* Connector dot */}
                     <div className="flex-shrink-0 pt-2">
                       <div
-                        className={`w-1.5 h-1.5 rounded-full z-10 ${
-                          selectedItem?.id === item.id
-                            ? "bg-primary"
-                            : "bg-muted-foreground/50 group-hover:bg-primary"
-                        }`}
+                        className={`w-1.5 h-1.5 rounded-full z-10 ${"bg-muted-foreground/50 group-hover:bg-primary"}`}
                       />
                     </div>
 
                     {/* Card */}
                     <div
-                      className={`ml-3 flex-1 p-2 rounded border transition-colors ${
-                        selectedItem?.id === item.id
-                          ? "bg-primary/10 border-primary"
-                          : "bg-card border-border hover:border-primary/50"
-                      }`}
+                      className={`ml-3 flex-1 p-2 rounded border transition-colors ${"bg-card border-border hover:border-primary/50"}`}
                     >
                       <p className="text-xs text-foreground line-clamp-2 leading-relaxed">
                         {item.text}
@@ -1266,18 +1258,6 @@ function TimelineView({
           ))}
         </div>
       </div>
-
-      {/* Detail Panel - Fixed on Right */}
-      {selectedItem && (
-        <div className="fixed right-0 top-0 h-screen w-[420px] bg-card border-l-2 border-primary shadow-2xl z-50 overflow-y-auto animate-in slide-in-from-right duration-300 ease-out">
-          <MemoryDetailPanel
-            memory={selectedItem}
-            onClose={() => setSelectedItem(null)}
-            inPanel
-            bankId={bankId}
-          />
-        </div>
-      )}
     </div>
   );
 }
