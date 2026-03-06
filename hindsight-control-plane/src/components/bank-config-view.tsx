@@ -487,7 +487,7 @@ export function BankConfigView() {
 
         {/* Entity Labels Section */}
         <ConfigSection
-          title="Entities"
+          title="Entity Labels"
           description="Control entity extraction and define a controlled vocabulary of key:value classification labels (e.g. pedagogy:scaffolding, interest:active)"
           error={entityLabelsError}
           dirty={entityLabelsDirty}
@@ -496,7 +496,7 @@ export function BankConfigView() {
         >
           <FieldRow
             label="Free Form Entities"
-            description="Extract regular named entities (people, places, concepts) alongside label groups. Disable to restrict extraction to label groups only."
+            description="Extract regular named entities (people, places, concepts) alongside entity labels. Disable to restrict extraction to entity labels only."
           >
             <div className="flex justify-end items-center gap-2">
               <Label
@@ -547,6 +547,16 @@ export function BankConfigView() {
               />
             </div>
           </FieldRow>
+          <TextareaRow
+            label="Mission"
+            description="What this bank should synthesise into durable observations. Replaces the built-in consolidation rules — leave blank to use the server default."
+            value={observationsEdits.observations_mission ?? ""}
+            onChange={(v) =>
+              setObservationsEdits((prev) => ({ ...prev, observations_mission: v || null }))
+            }
+            placeholder="e.g. Observations are stable facts about people and projects. Always include preferences, skills, and recurring patterns. Ignore one-off events and ephemeral state."
+            rows={3}
+          />
           <FieldRow
             label="LLM Batch Size"
             description="Number of facts sent to the LLM in a single consolidation call. Higher values reduce LLM calls at the cost of larger prompts. Leave blank to use the server default."
@@ -605,16 +615,6 @@ export function BankConfigView() {
               placeholder="Server default"
             />
           </FieldRow>
-          <TextareaRow
-            label="Mission"
-            description="What this bank should synthesise into durable observations. Replaces the built-in consolidation rules — leave blank to use the server default."
-            value={observationsEdits.observations_mission ?? ""}
-            onChange={(v) =>
-              setObservationsEdits((prev) => ({ ...prev, observations_mission: v || null }))
-            }
-            placeholder="e.g. Observations are stable facts about people and projects. Always include preferences, skills, and recurring patterns. Ignore one-off events and ephemeral state."
-            rows={3}
-          />
         </ConfigSection>
 
         {/* Reflect Section */}
@@ -1080,7 +1080,7 @@ function EntityLabelsEditor({
     <div className="px-6 py-4 space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium">Label Groups</p>
+          <p className="text-sm font-medium">Entity Labels</p>
           <p className="text-xs text-muted-foreground mt-0.5">
             Classification labels extracted at retain time. Leave empty to disable.
           </p>
@@ -1093,7 +1093,7 @@ function EntityLabelsEditor({
       </div>
 
       {value.length === 0 && (
-        <p className="text-xs text-muted-foreground italic">No label groups defined.</p>
+        <p className="text-xs text-muted-foreground italic">No entity labels defined.</p>
       )}
 
       <div className="space-y-2">
