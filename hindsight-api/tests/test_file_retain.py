@@ -598,7 +598,7 @@ async def test_on_file_convert_complete_hook_called(memory_no_llm_verify, sample
     validator = FileConvertTrackingValidator()
     memory_no_llm_verify._operation_validator = validator
 
-    context = RequestContext(internal=True, api_key_id="test-key-id")
+    context = RequestContext(internal=True, api_key_id="test-key-id", tenant_id="test-tenant")
     await memory_no_llm_verify.get_bank_profile(bank_id, request_context=context)
 
     class MockFile:
@@ -645,6 +645,7 @@ async def test_on_file_convert_complete_hook_called(memory_no_llm_verify, sample
     assert result.error is None
     assert result.request_context is not None
     assert result.request_context.api_key_id == "test-key-id"
+    assert result.request_context.tenant_id == "test-tenant"
 
 
 @pytest.mark.asyncio
