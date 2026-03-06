@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import { client, MentalModel } from "@/lib/api";
 import { useBank } from "@/lib/bank-context";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { Loader2, Zap } from "lucide-react";
+import { Loader2, Zap, FileText, History, ChevronLeft, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -100,20 +102,149 @@ export function MentalModelDetailContent({ mentalModel }: MentalModelDetailConte
   );
 }
 
+type HistoryEntry = { previous_content: string | null; changed_at: string };
+
+function diffWords(a: string, b: string): { type: "same" | "removed" | "added"; text: string }[] {
+  const aWords = a.split(/(\s+)/);
+  const bWords = b.split(/(\s+)/);
+  const m = aWords.length;
+  const n = bWords.length;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] =
+        aWords[i - 1] === bWords[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  let i = m,
+    j = n;
+  const ops: { type: "same" | "removed" | "added"; text: string }[] = [];
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && aWords[i - 1] === bWords[j - 1]) {
+      ops.push({ type: "same", text: aWords[i - 1] });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      ops.push({ type: "added", text: bWords[j - 1] });
+      j--;
+    } else {
+      ops.push({ type: "removed", text: aWords[i - 1] });
+      i--;
+    }
+  }
+  return ops.reverse();
+}
+
+function ContentDiff({ before, after }: { before: string; after: string }) {
+  const parts = diffWords(before, after);
+  const hasChanges = parts.some((p) => p.type !== "same");
+  if (!hasChanges) return <span className="text-sm text-muted-foreground italic">unchanged</span>;
+  return (
+    <span className="text-sm leading-relaxed whitespace-pre-wrap">
+      {parts.map((part, idx) =>
+        part.type === "same" ? (
+          <span key={idx}>{part.text}</span>
+        ) : part.type === "removed" ? (
+          <span
+            key={idx}
+            className="bg-red-500/15 text-red-700 dark:text-red-400 line-through rounded-sm px-0.5"
+          >
+            {part.text}
+          </span>
+        ) : (
+          <span
+            key={idx}
+            className="bg-green-500/15 text-green-700 dark:text-green-400 rounded-sm px-0.5"
+          >
+            {part.text}
+          </span>
+        )
+      )}
+    </span>
+  );
+}
+
+function MentalModelHistoryView({
+  history,
+  currentContent,
+}: {
+  history: HistoryEntry[];
+  currentContent: string;
+}) {
+  const [idx, setIdx] = useState(0);
+  const entry = history[idx];
+  const afterContent = idx === 0 ? currentContent : (history[idx - 1].previous_content ?? "");
+
+  return (
+    <div className="space-y-3">
+      {/* Navigation header */}
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">
+          Change <span className="font-semibold text-foreground">{history.length - idx}</span> of{" "}
+          {history.length} &middot; {new Date(entry.changed_at).toLocaleString()}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
+            disabled={idx === history.length - 1}
+            onClick={() => setIdx(idx + 1)}
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 w-7 p-0"
+            disabled={idx === 0}
+            onClick={() => setIdx(idx - 1)}
+          >
+            <ChevronRight className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Change card */}
+      <div className="border border-border rounded-lg p-3">
+        <div className="text-xs font-bold text-muted-foreground uppercase mb-2">Content</div>
+        {entry.previous_content !== null ? (
+          <ContentDiff before={entry.previous_content} after={afterContent} />
+        ) : (
+          <span className="text-sm text-muted-foreground italic">
+            Previous content not available
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface MentalModelDetailModalProps {
   mentalModelId: string | null;
   onClose: () => void;
+  initialTab?: string;
 }
 
 /**
  * Modal wrapper for MentalModelDetailContent.
  * Fetches the mental model by ID and displays it in a dialog.
  */
-export function MentalModelDetailModal({ mentalModelId, onClose }: MentalModelDetailModalProps) {
+export function MentalModelDetailModal({
+  mentalModelId,
+  onClose,
+  initialTab,
+}: MentalModelDetailModalProps) {
   const { currentBank } = useBank();
   const [mentalModel, setMentalModel] = useState<MentalModel | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState(initialTab ?? "model");
+
+  const [history, setHistory] = useState<HistoryEntry[] | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     if (!mentalModelId || !currentBank) return;
@@ -122,6 +253,8 @@ export function MentalModelDetailModal({ mentalModelId, onClose }: MentalModelDe
       setLoading(true);
       setError(null);
       setMentalModel(null);
+      setHistory(null);
+      setActiveTab(initialTab ?? "model");
 
       try {
         const data = await client.getMentalModel(currentBank, mentalModelId);
@@ -136,6 +269,26 @@ export function MentalModelDetailModal({ mentalModelId, onClose }: MentalModelDe
 
     loadMentalModel();
   }, [mentalModelId, currentBank]);
+
+  // Load history lazily when history tab is selected
+  useEffect(() => {
+    if (activeTab !== "history" || !mentalModel || !currentBank || history !== null) return;
+
+    const loadHistory = async () => {
+      setLoadingHistory(true);
+      try {
+        const data = await client.getMentalModelHistory(currentBank, mentalModel.id);
+        setHistory(data);
+      } catch (err) {
+        console.error("Error loading mental model history:", err);
+        setHistory([]);
+      } finally {
+        setLoadingHistory(false);
+      }
+    };
+
+    loadHistory();
+  }, [activeTab, mentalModel, currentBank, history]);
 
   const isOpen = mentalModelId !== null;
 
@@ -156,9 +309,41 @@ export function MentalModelDetailModal({ mentalModelId, onClose }: MentalModelDe
             </div>
           </div>
         ) : mentalModel ? (
-          <div className="flex-1 overflow-y-auto">
-            <MentalModelDetailContent mentalModel={mentalModel} />
-          </div>
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="flex-1 flex flex-col overflow-hidden"
+          >
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="model" className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                Mental Model
+              </TabsTrigger>
+              <TabsTrigger value="history" className="flex items-center gap-1.5">
+                <History className="w-3.5 h-3.5" />
+                History
+                {history && history.length > 0 ? ` (${history.length})` : ""}
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="flex-1 overflow-y-auto mt-4">
+              <TabsContent value="model" className="mt-0">
+                <MentalModelDetailContent mentalModel={mentalModel} />
+              </TabsContent>
+
+              <TabsContent value="history" className="mt-0">
+                {loadingHistory ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                  </div>
+                ) : history && history.length > 0 ? (
+                  <MentalModelHistoryView history={history} currentContent={mentalModel.content} />
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No history recorded yet.</p>
+                )}
+              </TabsContent>
+            </div>
+          </Tabs>
         ) : null}
       </DialogContent>
     </Dialog>
