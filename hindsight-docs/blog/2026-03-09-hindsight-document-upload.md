@@ -1,12 +1,12 @@
 ---
-title: "What's New in Hindsight: Document File Upload"
+title: "What's New in Hindsight Cloud: Document File Upload"
 authors: [hindsight]
 date: 2026-03-09
 tags: [release, memory]
 hide_table_of_contents: true
 ---
 
-Hindsight now lets you upload files directly to any memory bank. PDFs, Word documents, PowerPoint presentations, Excel spreadsheets, images, and plain text files are all supported.
+[Hindsight Cloud](https://ui.hindsight.vectorize.io/signup) now lets you upload files directly to any memory bank. PDFs, Word documents, PowerPoint presentations, Excel spreadsheets, images, and plain text files are all supported.
 
 <!-- truncate -->
 
