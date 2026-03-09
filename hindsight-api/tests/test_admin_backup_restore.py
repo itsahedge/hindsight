@@ -295,8 +295,8 @@ async def test_backup_restore_preserves_all_column_types(backup_test_schema):
 
 
 @pytest.mark.asyncio
-async def test_run_all_migrations_discovers_and_deduplicates_schemas(monkeypatch):
-    """run-all-db-migrations should include the base schema and deduplicate tenant schemas."""
+async def test_run_migration_without_schema_discovers_and_deduplicates_schemas(monkeypatch):
+    """run-db-migration without --schema should include the base schema and deduplicate tenant schemas."""
     calls: dict[str, list] = {
         "run_migrations": [],
         "ensure_vector_extension": [],
@@ -341,7 +341,7 @@ async def test_run_all_migrations_discovers_and_deduplicates_schemas(monkeypatch
     monkeypatch.setattr(migrations_module, "ensure_vector_extension", fake_ensure_vector_extension)
     monkeypatch.setattr(migrations_module, "ensure_text_search_extension", fake_ensure_text_search_extension)
 
-    schemas = await admin_cli._run_all_migrations("postgresql://test")
+    schemas = await admin_cli._run_migration("postgresql://test")
 
     assert schemas == ["public", "tenant_demo"]
     assert calls["run_migrations"] == [
@@ -359,7 +359,7 @@ async def test_run_all_migrations_discovers_and_deduplicates_schemas(monkeypatch
 
 
 @pytest.mark.asyncio
-async def test_run_all_migrations_runs_optional_post_migration_hooks(monkeypatch):
+async def test_run_migration_without_schema_runs_optional_post_migration_hooks(monkeypatch):
     """Embedding dimension sync should be optional, while vector/text checks always run."""
     monkeypatch.setenv("HINDSIGHT_API_DATABASE_URL", "postgresql://test")
     calls: dict[str, list] = {
@@ -411,7 +411,7 @@ async def test_run_all_migrations_runs_optional_post_migration_hooks(monkeypatch
     monkeypatch.setattr(migrations_module, "ensure_vector_extension", fake_ensure_vector_extension)
     monkeypatch.setattr(migrations_module, "ensure_text_search_extension", fake_ensure_text_search_extension)
 
-    schemas = await admin_cli._run_all_migrations(
+    schemas = await admin_cli._run_migration(
         "postgresql://test",
         base_schema="public",
         embedding_dimension=384,
@@ -434,3 +434,54 @@ async def test_run_all_migrations_runs_optional_post_migration_hooks(monkeypatch
         ("resolved::postgresql://test", "native", "public"),
         ("resolved::postgresql://test", "native", "tenant_demo"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_run_migration_with_schema_only_runs_requested_schema(monkeypatch):
+    """run-db-migration with --schema should only migrate the requested schema."""
+    monkeypatch.setenv("HINDSIGHT_API_DATABASE_URL", "postgresql://test")
+    calls: dict[str, list] = {
+        "run_migrations": [],
+        "ensure_vector_extension": [],
+        "ensure_text_search_extension": [],
+    }
+
+    class MockTenantExtension:
+        async def list_tenants(self):
+            return [Tenant(schema="tenant_demo"), Tenant(schema="tenant_other")]
+
+    async def fake_resolve_database_url(db_url: str) -> str:
+        return f"resolved::{db_url}"
+
+    def fake_run_migrations(database_url: str, schema: str | None = None) -> None:
+        calls["run_migrations"].append((database_url, schema))
+
+    def fake_ensure_vector_extension(
+        database_url: str,
+        vector_extension: str = "pgvector",
+        schema: str | None = None,
+    ) -> None:
+        calls["ensure_vector_extension"].append((database_url, vector_extension, schema))
+
+    def fake_ensure_text_search_extension(
+        database_url: str,
+        text_search_extension: str = "native",
+        schema: str | None = None,
+    ) -> None:
+        calls["ensure_text_search_extension"].append((database_url, text_search_extension, schema))
+
+    monkeypatch.setattr(admin_cli, "load_extension", lambda *args, **kwargs: MockTenantExtension())
+    monkeypatch.setattr(admin_cli, "resolve_database_url", fake_resolve_database_url)
+
+    from hindsight_api import migrations as migrations_module
+
+    monkeypatch.setattr(migrations_module, "run_migrations", fake_run_migrations)
+    monkeypatch.setattr(migrations_module, "ensure_vector_extension", fake_ensure_vector_extension)
+    monkeypatch.setattr(migrations_module, "ensure_text_search_extension", fake_ensure_text_search_extension)
+
+    schemas = await admin_cli._run_migration("postgresql://test", schema="tenant_demo")
+
+    assert schemas == ["tenant_demo"]
+    assert calls["run_migrations"] == [("resolved::postgresql://test", "tenant_demo")]
+    assert calls["ensure_vector_extension"] == [("resolved::postgresql://test", "pgvector", "tenant_demo")]
+    assert calls["ensure_text_search_extension"] == [("resolved::postgresql://test", "native", "tenant_demo")]
