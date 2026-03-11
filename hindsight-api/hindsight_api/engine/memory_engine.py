@@ -7446,6 +7446,10 @@ class MemoryEngine(MemoryEngineInterface):
         parent_operation_id = uuid.uuid4()
         pool = await self._get_pool()
 
+        # Ensure the bank row exists before inserting async_operations (which now has a FK).
+        # Banks are created lazily on first retain, but the FK requires the row to exist first.
+        await bank_utils.get_bank_profile(pool, bank_id)
+
         # Create typed metadata for parent operation
         parent_metadata = BatchRetainParentMetadata(
             items_count=len(contents),
