@@ -9,6 +9,7 @@ import logging
 
 from ...config import get_config
 from ..memory_engine import fq_table
+from .bank_utils import DEFAULT_DISPOSITION, create_bank_hnsw_indexes
 from .fact_extraction import _sanitize_text
 from .types import ProcessedFact
 
@@ -183,17 +184,20 @@ async def ensure_bank_exists(conn, bank_id: str) -> None:
         conn: Database connection
         bank_id: Bank identifier
     """
-    await conn.execute(
+    row = await conn.fetchrow(
         f"""
         INSERT INTO {fq_table("banks")} (bank_id, disposition, mission)
         VALUES ($1, $2::jsonb, $3)
-        ON CONFLICT (bank_id) DO UPDATE
-        SET updated_at = NOW()
+        ON CONFLICT (bank_id) DO NOTHING
+        RETURNING internal_id
         """,
         bank_id,
-        '{"skepticism": 3, "literalism": 3, "empathy": 3}',
+        json.dumps(DEFAULT_DISPOSITION),
         "",
     )
+    if row:
+        # Fresh insert — create per-bank HNSW indexes
+        await create_bank_hnsw_indexes(conn, bank_id, str(row["internal_id"]))
 
 
 async def handle_document_tracking(
