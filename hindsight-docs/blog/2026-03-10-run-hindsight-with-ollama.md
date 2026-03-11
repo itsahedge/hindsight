@@ -109,6 +109,7 @@ Two environment variables:
 ```bash
 export HINDSIGHT_API_LLM_PROVIDER=ollama
 export HINDSIGHT_API_LLM_MAX_CONCURRENT=1
+export HINDSIGHT_API_ENABLE_OBSERVATIONS=false
 ```
 
 Start the server:
@@ -126,6 +127,8 @@ export HINDSIGHT_API_LLM_MODEL=gpt-oss:20b
 That's it. Hindsight detects Ollama at `localhost:11434` and uses your specified model.
 
 > **Note:** `LLM_MAX_CONCURRENT=1` prevents overloading your machine. Local models run one request at a time; parallel LLM calls queue up and compete for RAM/GPU. Cloud APIs handle concurrency on their end, but local models don't.
+
+> **Note:** `ENABLE_OBSERVATIONS=false` disables observations (mental models). Observations run background LLM calls after each retain to consolidate facts into higher-level insights. With cloud APIs this is fast and useful, but with local models it adds significant inference time per retain. Disable them when getting started with Ollama. You can re-enable observations later once your setup is tuned.
 
 You should see:
 
@@ -301,6 +304,7 @@ export HINDSIGHT_API_LLM_PROVIDER=ollama
 export HINDSIGHT_API_LLM_MODEL=gpt-oss:120b       # upgrade from 20b
 export HINDSIGHT_API_LLM_BASE_URL=http://192.168.1.50:11434/v1  # remote Ollama
 export HINDSIGHT_API_LLM_MAX_CONCURRENT=2         # if your GPU can handle it
+export HINDSIGHT_API_ENABLE_OBSERVATIONS=true      # re-enable once tuned
 ```
 
 This also means you can run Ollama on a different machine (a GPU server, for example) and point Hindsight at it over the network. This is a common pattern for teams that want local privacy but better performance: run Ollama on a dedicated GPU box in your network, and run Hindsight on your application server.
