@@ -53,7 +53,7 @@ docker run --rm -it --pull always -p 8888:8888 -p 9999:9999 \
 
 ### Docker Image Variants
 
-Hindsight provides two image variants with different size/capability tradeoffs:
+Hindsight provides two image variants with different size/capability tradeoffs. The slim image corresponds to the [`hindsight-api-slim`](#package-variants) Python package — see the [Package Variants](#package-variants) section for a full breakdown of what is and isn't included.
 
 | Variant | Size (AMD64) | Size (ARM64) | Use Case |
 |---------|--------------|--------------|----------|
