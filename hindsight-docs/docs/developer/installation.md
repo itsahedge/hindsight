@@ -66,9 +66,9 @@ docker run --rm -it -p 8888:8888 \
   -e HINDSIGHT_API_LLM_API_KEY=$OPENAI_API_KEY \
   ghcr.io/vectorize-io/hindsight:latest
 ```
-- ✅ Works out of the box with local ML models
-- ✅ No additional services needed
-- ❌ Larger image size (AMD64 includes CUDA libraries for GPU support)
+- Works out of the box with local ML models
+- No additional services needed
+- Larger image size (AMD64 includes CUDA libraries for GPU support)
 
 **Slim image**:
 ```bash
@@ -79,10 +79,10 @@ docker run --rm -it -p 8888:8888 \
   -e HINDSIGHT_API_COHERE_API_KEY=$COHERE_API_KEY \
   ghcr.io/vectorize-io/hindsight:latest-slim
 ```
-- ✅ Dramatically smaller image (~95% reduction on AMD64)
-- ✅ Faster pull/deploy times
-- ✅ Lower memory footprint
-- ❌ Requires external embedding/reranking services (OpenAI, Cohere, TEI)
+- Dramatically smaller image (~95% reduction on AMD64)
+- Faster pull and deploy times
+- Lower memory footprint
+- Requires external embedding/reranking services (OpenAI, Cohere, TEI)
 
 **When to use slim:**
 - Cloud deployments where image size matters
@@ -98,7 +98,7 @@ ImportError: sentence-transformers is required for LocalSTEmbeddings.
 Install it with: pip install sentence-transformers
 ```
 
-**Fix:** Always set embedding and reranking providers when using slim images:
+Always set embedding and reranking providers when using slim images:
 ```bash
 -e HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai
 -e HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY=sk-xxx
@@ -181,23 +181,23 @@ See the [Helm chart values.yaml](https://github.com/vectorize-io/hindsight/tree/
 
 Hindsight publishes four Python packages. Choose the one that fits your setup:
 
-| Package | torch / local ML | pg0 embedded DB | Use case |
-|---------|-----------------|-----------------|----------|
-| **`hindsight-all`** | ✅ | ✅ | Full install — works out of the box |
-| **`hindsight-all-slim`** | ❌ | ❌ | Lightweight — use external providers for everything |
-| **`hindsight-api`** | ✅ | ✅ | API server only (no Python wrapper) |
-| **`hindsight-api-slim`** | ❌ | ❌ | Slim API server — add extras as needed |
+| Package | Local ML (torch, etc.) | Embedded DB (pg0) | Use case |
+|---------|------------------------|-------------------|----------|
+| **`hindsight-all`** | Yes | Yes | Full install — works out of the box |
+| **`hindsight-all-slim`** | No | No | Lightweight — requires external providers |
+| **`hindsight-api`** | Yes | Yes | API server only, no Python convenience wrapper |
+| **`hindsight-api-slim`** | No | No | API server with optional extras |
 
-**`hindsight-api-slim` optional extras:**
+`hindsight-api-slim` supports the following optional extras:
 
 ```bash
-pip install hindsight-api-slim            # No ML, no embedded DB
-pip install "hindsight-api-slim[local-ml]"    # + torch, sentence-transformers, flashrank, mlx
-pip install "hindsight-api-slim[embedded-db]" # + pg0 embedded PostgreSQL
-pip install "hindsight-api-slim[all]"         # Everything (equivalent to hindsight-api)
+pip install hindsight-api-slim                    # No local ML, no embedded DB
+pip install "hindsight-api-slim[local-ml]"        # Adds torch, sentence-transformers, flashrank, mlx
+pip install "hindsight-api-slim[embedded-db]"     # Adds pg0 embedded PostgreSQL
+pip install "hindsight-api-slim[all]"             # All extras (equivalent to hindsight-api)
 ```
 
-:::tip Slim packages require external providers
+:::note Using slim packages
 When using `hindsight-all-slim` or `hindsight-api-slim` without extras, configure external providers:
 ```bash
 export HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai
