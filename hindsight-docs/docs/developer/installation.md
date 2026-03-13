@@ -53,61 +53,12 @@ docker run --rm -it --pull always -p 8888:8888 -p 9999:9999 \
 
 ### Docker Image Variants
 
-Hindsight provides two image variants with different size/capability tradeoffs. The slim image corresponds to the [`hindsight-api-slim`](#package-variants) Python package — see the [Package Variants](#package-variants) section for a full breakdown of what is and isn't included.
+| Variant | Size (AMD64) | Size (ARM64) | Local ML | When to use |
+|---------|--------------|--------------|----------|-------------|
+| **Full** (`latest`) | ~9 GB | ~3.7 GB | Yes | Default. Works out of the box with no external services. |
+| **Slim** (`slim`) | ~500 MB | ~500 MB | No | Cloud deployments, managed embedding/reranking (OpenAI, Cohere, TEI), or Kubernetes where image size matters. Requires [external providers](./configuration#embeddings). |
 
-| Variant | Size (AMD64) | Size (ARM64) | Use Case |
-|---------|--------------|--------------|----------|
-| **Full** (`latest`) | ~9 GB | ~3.7 GB | Includes local ML models (embeddings, reranking) |
-| **Slim** (`slim`) | ~500 MB | ~500 MB | Requires external embedding/reranking providers |
-
-**Full image** (default):
-```bash
-docker run --rm -it -p 8888:8888 \
-  -e HINDSIGHT_API_LLM_API_KEY=$OPENAI_API_KEY \
-  ghcr.io/vectorize-io/hindsight:latest
-```
-- Works out of the box with local ML models
-- No additional services needed
-- Larger image size (AMD64 includes CUDA libraries for GPU support)
-
-**Slim image**:
-```bash
-docker run --rm -it -p 8888:8888 \
-  -e HINDSIGHT_API_LLM_API_KEY=$OPENAI_API_KEY \
-  -e HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai \
-  -e HINDSIGHT_API_RERANKER_PROVIDER=cohere \
-  -e HINDSIGHT_API_COHERE_API_KEY=$COHERE_API_KEY \
-  ghcr.io/vectorize-io/hindsight:latest-slim
-```
-- Dramatically smaller image (~95% reduction on AMD64)
-- Faster pull and deploy times
-- Lower memory footprint
-- Requires external embedding/reranking services (OpenAI, Cohere, TEI)
-
-**When to use slim:**
-- Cloud deployments where image size matters
-- Using managed embedding services (OpenAI, Cohere)
-- Running on Text Embeddings Inference (TEI) infrastructure
-- Kubernetes environments with fast pull requirements
-
-:::warning Slim Image Requires External Providers
-If you run the slim image **without** setting external embedding providers, you'll see this error:
-
-```
-ImportError: sentence-transformers is required for LocalSTEmbeddings.
-Install it with: pip install sentence-transformers
-```
-
-Always set embedding and reranking providers when using slim images:
-```bash
--e HINDSIGHT_API_EMBEDDINGS_PROVIDER=openai
--e HINDSIGHT_API_EMBEDDINGS_OPENAI_API_KEY=sk-xxx
--e HINDSIGHT_API_RERANKER_PROVIDER=cohere
--e HINDSIGHT_API_COHERE_API_KEY=xxx
-```
-:::
-
-See [Configuration](./configuration#embeddings) for all embedding provider options.
+The slim image corresponds to the [`hindsight-api-slim`](#package-variants) pip package. See [Configuration](./configuration#embeddings) for external provider options.
 
 ### Available Tags
 
