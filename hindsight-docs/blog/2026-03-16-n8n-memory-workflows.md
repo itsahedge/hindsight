@@ -1,7 +1,7 @@
 ---
 title: "3 Nodes. Zero Code. Persistent Memory for n8n Workflows"
 authors: [benfrank241]
-date: 2026-02-13
+date: 2026-03-16
 tags: [n8n, tutorial, workflow, memory, no-code]
 image: /img/blog/n8n-memory-workflows.png
 ---
