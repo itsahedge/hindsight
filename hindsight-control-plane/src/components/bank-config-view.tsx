@@ -35,6 +35,9 @@ type RetainEdits = {
   retain_extraction_mode: string | null;
   retain_mission: string | null;
   retain_custom_instructions: string | null;
+};
+
+type StrategiesEdits = {
   retain_default_strategy: string | null;
   retain_strategies: Record<string, Record<string, any>> | null;
 };
@@ -142,6 +145,11 @@ function retainSlice(config: Record<string, any>): RetainEdits {
     retain_extraction_mode: config.retain_extraction_mode ?? null,
     retain_mission: config.retain_mission ?? null,
     retain_custom_instructions: config.retain_custom_instructions ?? null,
+  };
+}
+
+function strategiesSlice(config: Record<string, any>): StrategiesEdits {
+  return {
     retain_default_strategy: config.retain_default_strategy ?? null,
     retain_strategies: config.retain_strategies ?? null,
   };
@@ -205,6 +213,7 @@ export function BankConfigView() {
 
   // Per-section local edits
   const [retainEdits, setRetainEdits] = useState<RetainEdits>(retainSlice({}));
+  const [strategiesEdits, setStrategiesEdits] = useState<StrategiesEdits>(strategiesSlice({}));
   const [observationsEdits, setObservationsEdits] = useState<ObservationsEdits>(
     observationsSlice({})
   );
@@ -217,24 +226,28 @@ export function BankConfigView() {
 
   // Per-section saving/error state
   const [retainSaving, setRetainSaving] = useState(false);
+  const [strategiesSaving, setStrategiesSaving] = useState(false);
   const [observationsSaving, setObservationsSaving] = useState(false);
   const [entityLabelsSaving, setEntityLabelsSaving] = useState(false);
   const [reflectSaving, setReflectSaving] = useState(false);
   const [mcpSaving, setMcpSaving] = useState(false);
   const [geminiSaving, setGeminiSaving] = useState(false);
   const [retainError, setRetainError] = useState<string | null>(null);
+  const [strategiesError, setStrategiesError] = useState<string | null>(null);
   const [observationsError, setObservationsError] = useState<string | null>(null);
   const [entityLabelsError, setEntityLabelsError] = useState<string | null>(null);
   const [reflectError, setReflectError] = useState<string | null>(null);
   const [mcpError, setMcpError] = useState<string | null>(null);
   const [geminiError, setGeminiError] = useState<string | null>(null);
 
-  // Reset dialog
-
   // Dirty tracking
   const retainDirty = useMemo(
     () => JSON.stringify(retainEdits) !== JSON.stringify(retainSlice(baseConfig)),
     [retainEdits, baseConfig]
+  );
+  const strategiesDirty = useMemo(
+    () => JSON.stringify(strategiesEdits) !== JSON.stringify(strategiesSlice(baseConfig)),
+    [strategiesEdits, baseConfig]
   );
   const observationsDirty = useMemo(
     () => JSON.stringify(observationsEdits) !== JSON.stringify(observationsSlice(baseConfig)),
@@ -281,6 +294,7 @@ export function BankConfigView() {
       setBaseConfig(cfg);
       setBaseProfile(prof);
       setRetainEdits(retainSlice(cfg));
+      setStrategiesEdits(strategiesSlice(cfg));
       setObservationsEdits(observationsSlice(cfg));
       setEntityLabelsEdits(entityLabelsSlice(cfg));
       setReflectEdits(prof);
@@ -304,6 +318,20 @@ export function BankConfigView() {
       setRetainError(err.message || "Failed to save retain settings");
     } finally {
       setRetainSaving(false);
+    }
+  };
+
+  const saveStrategies = async () => {
+    if (!bankId) return;
+    setStrategiesSaving(true);
+    setStrategiesError(null);
+    try {
+      await client.updateBankConfig(bankId, strategiesEdits);
+      setBaseConfig((prev) => ({ ...prev, ...strategiesEdits }));
+    } catch (err: any) {
+      setStrategiesError(err.message || "Failed to save strategies");
+    } finally {
+      setStrategiesSaving(false);
     }
   };
 
@@ -487,14 +515,25 @@ export function BankConfigView() {
               rows={5}
             />
           )}
+        </ConfigSection>
+
+        {/* Retain Strategies Section */}
+        <ConfigSection
+          title="Retain Strategies"
+          description="Named config presets that can be selected per-request or per-item via the strategy field. Each strategy is a set of config overrides applied on top of the bank defaults."
+          error={strategiesError}
+          dirty={strategiesDirty}
+          saving={strategiesSaving}
+          onSave={saveStrategies}
+        >
           <FieldRow
             label="Default Strategy"
-            description="Name of the retain strategy used when no strategy is specified on the request. Must match a key in Retain Strategies below."
+            description="Applied automatically when no strategy is specified on a retain request. Must match a strategy name defined below."
           >
             <Input
-              value={retainEdits.retain_default_strategy ?? ""}
+              value={strategiesEdits.retain_default_strategy ?? ""}
               onChange={(e) =>
-                setRetainEdits((prev) => ({
+                setStrategiesEdits((prev) => ({
                   ...prev,
                   retain_default_strategy: e.target.value || null,
                 }))
@@ -503,8 +542,8 @@ export function BankConfigView() {
             />
           </FieldRow>
           <StrategiesEditor
-            value={retainEdits.retain_strategies}
-            onChange={(v) => setRetainEdits((prev) => ({ ...prev, retain_strategies: v }))}
+            value={strategiesEdits.retain_strategies}
+            onChange={(v) => setStrategiesEdits((prev) => ({ ...prev, retain_strategies: v }))}
           />
         </ConfigSection>
 
@@ -804,7 +843,6 @@ function StrategiesEditor({
   const valueKey = JSON.stringify(value);
   useEffect(() => {
     setEntries(toEntries(value));
-     
   }, [valueKey]);
 
   const emit = (next: StrategyEntry[]) => {
