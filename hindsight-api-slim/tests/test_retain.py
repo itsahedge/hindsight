@@ -2649,3 +2649,82 @@ def test_retain_mission_config_loaded_from_env():
         else:
             os.environ["HINDSIGHT_API_RETAIN_MISSION"] = original
         clear_config_cache()
+
+
+def test_strategy_overrides_extraction_mode_for_index_only():
+    """
+    Unit test: a named strategy with retain_extraction_mode=index_only causes
+    extract_facts_from_contents to skip the LLM and return verbatim chunks.
+    """
+    import asyncio
+
+    from hindsight_api.config import _get_raw_config, clear_config_cache
+    from hindsight_api.config_resolver import apply_strategy
+    from hindsight_api.engine.retain.fact_extraction import extract_facts_from_contents
+    from hindsight_api.engine.retain.types import RetainContent
+
+    clear_config_cache()
+    base_config = _get_raw_config()
+
+    # Build a config that has a strategy overriding to index_only
+    strategies = {"fast": {"retain_extraction_mode": "index_only"}}
+    config_with_strategies = base_config.__class__(
+        **{**base_config.__dict__, "retain_strategies": strategies}
+    )
+    strategy_config = apply_strategy(config_with_strategies, "fast")
+    assert strategy_config.retain_extraction_mode == "index_only"
+
+    contents = [
+        RetainContent(content="Alice deployed the new API on Monday."),
+        RetainContent(content="Bob reviewed the pull request."),
+    ]
+
+    facts, chunks, usage = asyncio.get_event_loop().run_until_complete(
+        extract_facts_from_contents(
+            contents=contents,
+            llm_config=None,  # index_only must not call the LLM
+            agent_name="TestAgent",
+            config=strategy_config,
+        )
+    )
+
+    assert len(facts) == 2
+    assert facts[0].fact_text == contents[0].content
+    assert facts[1].fact_text == contents[1].content
+    assert usage.total_tokens == 0
+    logger.info("✓ strategy with index_only mode: no LLM, verbatim chunks, zero tokens")
+
+
+def test_retain_request_per_item_strategy_field():
+    """
+    Unit test: MemoryItem accepts a strategy field; items with different strategies
+    are grouped correctly by effective strategy (item.strategy ?? request.strategy).
+    """
+    from hindsight_api.api.http import MemoryItem, RetainRequest
+
+    request = RetainRequest.model_validate(
+        {
+            "items": [
+                {"content": "Alice joined.", "strategy": "fast"},
+                {"content": "Bob left.", "strategy": "detailed"},
+                {"content": "Carol arrived."},  # no per-item strategy
+            ],
+            "strategy": "default_strategy",
+        }
+    )
+
+    assert request.items[0].strategy == "fast"
+    assert request.items[1].strategy == "detailed"
+    assert request.items[2].strategy is None  # will inherit request.strategy downstream
+
+    # Simulate grouping logic from api_retain handler
+    strategy_groups: dict = {}
+    for item in request.items:
+        effective = item.strategy if item.strategy is not None else request.strategy
+        strategy_groups.setdefault(effective, []).append(item.content)
+
+    assert set(strategy_groups.keys()) == {"fast", "detailed", "default_strategy"}
+    assert strategy_groups["fast"] == ["Alice joined."]
+    assert strategy_groups["detailed"] == ["Bob left."]
+    assert strategy_groups["default_strategy"] == ["Carol arrived."]
+    logger.info("✓ per-item strategy grouping works correctly")

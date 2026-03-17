@@ -714,6 +714,8 @@ class MemoryEngine(MemoryEngineInterface):
         retain_task_payload: dict[str, Any] = {"contents": retain_contents}
         if document_tags:
             retain_task_payload["document_tags"] = document_tags
+        if task_dict.get("strategy"):
+            retain_task_payload["strategy"] = task_dict["strategy"]
 
         # Pass tenant/api_key context through to retain task
         if task_dict.get("_tenant_id"):
@@ -2226,6 +2228,7 @@ class MemoryEngine(MemoryEngineInterface):
 
             # Apply strategy overrides: explicit strategy > bank default strategy
             from hindsight_api.config_resolver import apply_strategy
+
             effective_strategy = strategy or resolved_config.retain_default_strategy
             if effective_strategy:
                 resolved_config = apply_strategy(resolved_config, effective_strategy)
@@ -7614,6 +7617,8 @@ class MemoryEngine(MemoryEngineInterface):
                 "document_tags": document_tags or [],
                 "timestamp": item.get("timestamp"),
             }
+            if item.get("strategy"):
+                task_payload["strategy"] = item["strategy"]
 
             # Pass tenant_id and api_key_id through task payload
             if request_context.tenant_id:
