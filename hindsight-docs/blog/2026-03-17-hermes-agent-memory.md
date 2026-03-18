@@ -248,4 +248,4 @@ The key practical detail: disable Hermes's built-in `memory` tool. Otherwise the
 - **Use per-user banks.** Set `HINDSIGHT_BANK_ID` per user for isolated memory per person.
 - **Explore the MCP alternative.** Hermes supports MCP servers natively. You can connect Hindsight's MCP server directly (`http://localhost:8888/mcp`) instead of the plugin — no `hindsight-hermes` package needed. The tradeoff is that the plugin registers tools with Hermes-native schemas, while MCP tools need discovery.
 - **Use manual registration for more control.** If you want to set tags, recall filters, or skip the plugin system, `hindsight-hermes` exposes `register_tools()` and `memory_instructions()` functions for direct use.
-- **Read the docs.** Full API reference at [hindsight.vectorize.io](https://hindsight.vectorize.io).
+- **Read the docs.** Full integration reference at [hindsight.vectorize.io/sdks/integrations/hermes](https://hindsight.vectorize.io/sdks/integrations/hermes).
