@@ -4,7 +4,6 @@ import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from hindsight_langgraph.errors import HindsightError
 from hindsight_langgraph.store import HindsightStore, _namespace_to_bank_id, _parse_value
 
@@ -112,9 +111,7 @@ class TestHindsightStoreGet:
     @pytest.mark.asyncio
     async def test_get_returns_item_by_document_id(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(
-            ['{"color": "blue"}'], document_ids=["pref-1"]
-        )
+        client.arecall.return_value = _mock_recall_response(['{"color": "blue"}'], document_ids=["pref-1"])
         store = HindsightStore(client=client)
 
         item = await store.aget(("user", "123"), "pref-1")
@@ -149,9 +146,7 @@ class TestHindsightStoreSearch:
     @pytest.mark.asyncio
     async def test_search_returns_results(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(
-            ["User likes Python", "User is in NYC"]
-        )
+        client.arecall.return_value = _mock_recall_response(["User likes Python", "User is in NYC"])
         store = HindsightStore(client=client)
 
         results = await store.asearch(("user", "123"), query="preferences")
@@ -163,9 +158,7 @@ class TestHindsightStoreSearch:
     @pytest.mark.asyncio
     async def test_search_respects_limit(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(
-            ["fact1", "fact2", "fact3", "fact4", "fact5"]
-        )
+        client.arecall.return_value = _mock_recall_response(["fact1", "fact2", "fact3", "fact4", "fact5"])
         store = HindsightStore(client=client)
 
         results = await store.asearch(("user", "123"), query="facts", limit=2)
@@ -190,9 +183,7 @@ class TestHindsightStoreSearch:
         )
         store = HindsightStore(client=client)
 
-        results = await store.asearch(
-            ("user", "123"), query="info", filter={"type": "preference"}
-        )
+        results = await store.asearch(("user", "123"), query="info", filter={"type": "preference"})
 
         assert len(results) == 1
         assert results[0].value["type"] == "preference"
@@ -215,16 +206,23 @@ class TestHindsightStoreListNamespaces:
 
     @pytest.mark.asyncio
     async def test_list_respects_max_depth(self):
+        """max_depth truncates deep namespaces and deduplicates per BaseStore contract."""
         client = _mock_client()
         store = HindsightStore(client=client)
 
         await store.aput(("a",), "k", {"v": 1})
         await store.aput(("a", "b", "c"), "k", {"v": 2})
+        await store.aput(("x", "y"), "k", {"v": 3})
 
         namespaces = await store.alist_namespaces(max_depth=1)
 
+        # ("a",) stays as-is, ("a", "b", "c") truncated to ("a",) and deduped,
+        # ("x", "y") truncated to ("x",)
         assert ("a",) in namespaces
+        assert ("x",) in namespaces
         assert ("a", "b", "c") not in namespaces
+        assert ("x", "y") not in namespaces
+        assert len(namespaces) == 2
 
     @pytest.mark.asyncio
     async def test_list_respects_limit(self):

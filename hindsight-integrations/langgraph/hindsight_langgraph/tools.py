@@ -11,35 +11,14 @@ from typing import Any, Optional
 from hindsight_client import Hindsight
 from langchain_core.tools import tool
 
+from ._client import resolve_client
 from .config import get_config
 from .errors import HindsightError
 
 logger = logging.getLogger(__name__)
 
-
-def _resolve_client(
-    client: Optional[Hindsight],
-    hindsight_api_url: Optional[str],
-    api_key: Optional[str],
-) -> Hindsight:
-    """Resolve a Hindsight client from explicit args or global config."""
-    if client is not None:
-        return client
-
-    config = get_config()
-    url = hindsight_api_url or (config.hindsight_api_url if config else None)
-    key = api_key or (config.api_key if config else None)
-
-    if url is None:
-        raise HindsightError(
-            "No Hindsight API URL configured. "
-            "Pass client= or hindsight_api_url=, or call configure() first."
-        )
-
-    kwargs: dict[str, Any] = {"base_url": url, "timeout": 30.0}
-    if key:
-        kwargs["api_key"] = key
-    return Hindsight(**kwargs)
+# Backward-compat alias — internal callers should use resolve_client from _client.py
+_resolve_client = resolve_client
 
 
 def create_hindsight_tools(
@@ -48,11 +27,11 @@ def create_hindsight_tools(
     client: Optional[Hindsight] = None,
     hindsight_api_url: Optional[str] = None,
     api_key: Optional[str] = None,
-    budget: str = "mid",
-    max_tokens: int = 4096,
+    budget: Optional[str] = None,
+    max_tokens: Optional[int] = None,
     tags: Optional[list[str]] = None,
     recall_tags: Optional[list[str]] = None,
-    recall_tags_match: str = "any",
+    recall_tags_match: Optional[str] = None,
     # Retain options
     retain_metadata: Optional[dict[str, str]] = None,
     retain_document_id: Optional[str] = None,
@@ -103,12 +82,14 @@ def create_hindsight_tools(
     Raises:
         HindsightError: If no client or API URL can be resolved.
     """
-    resolved_client = _resolve_client(client, hindsight_api_url, api_key)
+    resolved_client = resolve_client(client, hindsight_api_url, api_key)
 
     config = get_config()
     effective_tags = tags if tags is not None else (config.tags if config else None)
     effective_recall_tags = recall_tags if recall_tags is not None else (config.recall_tags if config else None)
-    effective_recall_tags_match = recall_tags_match if recall_tags_match is not None else (config.recall_tags_match if config else "any")
+    effective_recall_tags_match = (
+        recall_tags_match if recall_tags_match is not None else (config.recall_tags_match if config else "any")
+    )
     effective_budget = budget if budget is not None else (config.budget if config else "mid")
     effective_max_tokens = max_tokens if max_tokens is not None else (config.max_tokens if config else 4096)
 

@@ -5,18 +5,18 @@ Namespace tuples are joined to form bank IDs, and values are stored/retrieved
 via retain/recall.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Iterable, Optional
 
 from hindsight_client import Hindsight
 from langgraph.store.base import BaseStore, GetOp, Item, ListNamespacesOp, PutOp, Result, SearchItem, SearchOp
 
-from .config import get_config
+from ._client import resolve_client
 from .errors import HindsightError
-from .tools import _resolve_client
 
 logger = logging.getLogger(__name__)
 
@@ -64,10 +64,28 @@ class HindsightStore(BaseStore):
     - Namespace tuples are joined with "." to form bank IDs
     - ``put()`` stores values via Hindsight retain with the key as document_id
     - ``search()`` uses Hindsight recall for semantic search
-    - ``get()`` uses recall with the key as a targeted query
+    - ``get()`` uses recall with the key as a targeted query, returning only
+      exact ``document_id`` matches. If the stored document does not surface in
+      the recall window, ``get()`` returns ``None`` even though the item exists.
+      Hindsight does not currently expose a direct document-lookup endpoint.
 
-    This enables LangGraph's built-in memory patterns (cross-thread memory,
-    semantic search) to be backed by Hindsight's memory engine.
+    **Known limitations:**
+
+    - **Async-only.** All sync methods (``batch``, ``get``, ``put``, ``delete``,
+      ``search``, ``list_namespaces``) raise ``NotImplementedError``. Use the
+      async variants (``abatch``, ``aget``, ``aput``, ``adelete``, ``asearch``,
+      ``alist_namespaces``) instead.
+    - **``list_namespaces`` is session-scoped.** It only tracks namespaces that
+      have been written to via ``aput()`` during the current process. After a
+      restart, ``list_namespaces`` returns empty even though data still exists
+      in Hindsight. Hindsight does not currently provide a bank-listing API.
+    - **``delete`` is a no-op.** Calling ``adelete()`` logs a debug message but
+      does not remove data. Hindsight's memory model is append-oriented; fact
+      superseding is handled automatically during retain.
+    - **``get()`` relies on recall.** There is no direct key lookup — the key
+      is used as a recall query and only exact ``document_id`` matches are
+      returned. Items that do not rank in the top recall results will appear
+      missing.
 
     Example::
 
@@ -86,12 +104,14 @@ class HindsightStore(BaseStore):
         api_key: Optional[str] = None,
         tags: Optional[list[str]] = None,
     ):
-        self._client = _resolve_client(client, hindsight_api_url, api_key)
+        self._client = resolve_client(client, hindsight_api_url, api_key)
         self._tags = tags
-        # Track known namespaces for list_namespaces
+        # Track known namespaces for list_namespaces (session-scoped only)
         self._known_namespaces: set[tuple[str, ...]] = set()
         # Track banks that have been created to avoid repeated create calls
         self._created_banks: set[str] = set()
+        # Per-bank locks for concurrency-safe bank creation
+        self._bank_locks: dict[str, asyncio.Lock] = {}
 
     def batch(self, ops: Iterable[GetOp | PutOp | SearchOp | ListNamespacesOp]) -> list[Result]:
         raise NotImplementedError("Use abatch() for async operation.")
@@ -141,20 +161,28 @@ class HindsightStore(BaseStore):
             return None
 
     async def _ensure_bank(self, bank_id: str) -> None:
-        """Create a bank if it hasn't been created yet in this session."""
+        """Create a bank if it hasn't been created yet in this session.
+
+        Uses per-bank locking to prevent concurrent creation races.
+        """
         if bank_id in self._created_banks:
             return
-        try:
-            await self._client.acreate_bank(bank_id, name=bank_id)
-            self._created_banks.add(bank_id)
-        except Exception as e:
-            error_str = str(e).lower()
-            if "already exists" in error_str or "conflict" in error_str or "409" in error_str:
-                # Bank already exists — safe to cache
+        lock = self._bank_locks.setdefault(bank_id, asyncio.Lock())
+        async with lock:
+            # Double-check after acquiring the lock
+            if bank_id in self._created_banks:
+                return
+            try:
+                await self._client.acreate_bank(bank_id, name=bank_id)
                 self._created_banks.add(bank_id)
-            else:
-                logger.error(f"Failed to create bank '{bank_id}': {e}")
-                raise
+            except Exception as e:
+                error_str = str(e).lower()
+                if "already exists" in error_str or "conflict" in error_str or "409" in error_str:
+                    # Bank already exists — safe to cache
+                    self._created_banks.add(bank_id)
+                else:
+                    logger.error(f"Failed to create bank '{bank_id}': {e}")
+                    raise
 
     async def _handle_put(self, op: PutOp) -> None:
         """Handle a put operation by retaining the value."""
@@ -203,7 +231,7 @@ class HindsightStore(BaseStore):
             for i, result in enumerate(response.results):
                 value = _parse_value(result.text)
                 doc_id = getattr(result, "document_id", None) or _content_key(result.text)
-                score = 1.0 - (i * 0.01)  # Approximate score from rank position
+                score = max(0.0, 1.0 - (i * 0.01))  # Approximate score from rank position
                 ts = getattr(result, "occurred_start", None)
                 all_items.append(_make_search_item(op.namespace_prefix, doc_id, value, score=score, created_at=ts))
 
@@ -220,25 +248,30 @@ class HindsightStore(BaseStore):
             return []
 
     async def _handle_list_namespaces(self, op: ListNamespacesOp) -> list[tuple[str, ...]]:
-        """List known namespaces. Limited to namespaces seen via put()."""
+        """List known namespaces. Limited to namespaces seen via put() in this session."""
         namespaces = list(self._known_namespaces)
 
         if op.match_conditions:
-            # Basic prefix matching
             filtered = []
             for ns in namespaces:
                 match = True
                 for cond in op.match_conditions:
-                    prefix = cond.match_type == "prefix" if hasattr(cond, "match_type") else True
-                    if prefix and not _namespace_starts_with(ns, cond.path):
-                        match = False
-                        break
+                    match_type = getattr(cond, "match_type", "prefix")
+                    if match_type == "prefix":
+                        if not _namespace_starts_with(ns, cond.path):
+                            match = False
+                            break
+                    elif match_type == "suffix":
+                        if not _namespace_ends_with(ns, cond.path):
+                            match = False
+                            break
                 if match:
                     filtered.append(ns)
             namespaces = filtered
 
         if op.max_depth is not None:
-            namespaces = [ns for ns in namespaces if len(ns) <= op.max_depth]
+            # Truncate namespaces to max_depth and deduplicate, per BaseStore contract.
+            namespaces = list(dict.fromkeys(ns[: op.max_depth] for ns in namespaces))
 
         limit = op.limit or 100
         offset = op.offset or 0
@@ -299,28 +332,10 @@ class HindsightStore(BaseStore):
         )
         return result[0]
 
-    def list_namespaces(
-        self,
-        *,
-        match_conditions: Optional[Sequence] = None,
-        max_depth: Optional[int] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[tuple[str, ...]]:
-        raise NotImplementedError("Use alist_namespaces() for async operation.")
-
-    async def alist_namespaces(
-        self,
-        *,
-        match_conditions: Optional[Sequence] = None,
-        max_depth: Optional[int] = None,
-        limit: int = 100,
-        offset: int = 0,
-    ) -> list[tuple[str, ...]]:
-        result = await self.abatch(
-            [ListNamespacesOp(match_conditions=match_conditions, max_depth=max_depth, limit=limit, offset=offset)]
-        )
-        return result[0]
+    # list_namespaces / alist_namespaces are NOT overridden here.
+    # The base class converts prefix=/suffix= kwargs into MatchCondition
+    # objects and calls abatch() -> _handle_list_namespaces(). Overriding
+    # with a different signature (match_conditions=) would break callers.
 
 
 def _parse_value(text: str) -> dict:
@@ -352,3 +367,10 @@ def _namespace_starts_with(namespace: tuple[str, ...], prefix: tuple[str, ...]) 
     if len(prefix) > len(namespace):
         return False
     return namespace[: len(prefix)] == prefix
+
+
+def _namespace_ends_with(namespace: tuple[str, ...], suffix: tuple[str, ...]) -> bool:
+    """Check if namespace ends with the given suffix."""
+    if len(suffix) > len(namespace):
+        return False
+    return namespace[len(namespace) - len(suffix) :] == suffix

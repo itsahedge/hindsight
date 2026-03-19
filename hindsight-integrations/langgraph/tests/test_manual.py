@@ -1,5 +1,7 @@
 """Manual integration test — requires running Hindsight API on localhost:8888."""
+
 import asyncio
+
 from hindsight_client import Hindsight
 from hindsight_langgraph import create_hindsight_tools
 

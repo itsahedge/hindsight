@@ -12,9 +12,9 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import MessagesState
 
+from ._client import resolve_client
 from .config import get_config
 from .errors import HindsightError
-from .tools import _resolve_client
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +56,16 @@ def create_recall_node(
     """Create a node that injects relevant memories into the conversation.
 
     This node extracts the latest user message, recalls relevant memories
-    from Hindsight, and prepends them as a system message. It should be
-    placed before the LLM call node in your graph.
+    from Hindsight, and adds them as a SystemMessage with a stable ID
+    (``"hindsight_memory_context"``). It should be placed before the LLM
+    call node in your graph.
+
+    **Important:** ``MessagesState`` uses ``add_messages`` as its reducer,
+    which appends new messages. The memory SystemMessage will appear after
+    existing messages in the list, not at position 0. Most LLM providers
+    expect system messages first. To ensure correct ordering, your agent
+    node should sort or filter messages before passing them to the model,
+    or use the memory text from the SystemMessage to build your own prompt.
 
     The bank_id can be provided directly or resolved dynamically from
     the graph's RunnableConfig via the ``bank_id_from_config`` key.
@@ -79,7 +87,7 @@ def create_recall_node(
     Returns:
         An async node function compatible with LangGraph StateGraph.
     """
-    resolved_client = _resolve_client(client, hindsight_api_url, api_key)
+    resolved_client = resolve_client(client, hindsight_api_url, api_key)
 
     async def recall_node(state: MessagesState, config: Optional[RunnableConfig] = None) -> dict[str, Any]:
         resolved_bank_id = bank_id
@@ -123,7 +131,7 @@ def create_recall_node(
                 lines.append(f"{i}. {result.text}")
             memory_text = "\n".join(lines)
 
-            return {"messages": [SystemMessage(content=memory_text)]}
+            return {"messages": [SystemMessage(content=memory_text, id="hindsight_memory_context")]}
         except Exception as e:
             logger.error(f"Recall node failed: {e}")
             return {"messages": []}
@@ -161,7 +169,7 @@ def create_retain_node(
     Returns:
         An async node function compatible with LangGraph StateGraph.
     """
-    resolved_client = _resolve_client(client, hindsight_api_url, api_key)
+    resolved_client = resolve_client(client, hindsight_api_url, api_key)
 
     async def retain_node(state: MessagesState, config: Optional[RunnableConfig] = None) -> dict[str, Any]:
         resolved_bank_id = bank_id

@@ -507,6 +507,7 @@ langgraph = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "hindsight-langgraph", extra = ["langgraph"] },
     { name = "pytest" },
     { name = "pytest-asyncio" },
 ]
@@ -515,13 +516,14 @@ dev = [
 requires-dist = [
     { name = "hindsight-client", specifier = ">=0.4.0" },
     { name = "langchain-core", specifier = ">=0.3.0" },
-    { name = "langgraph", marker = "extra == 'all'", specifier = ">=0.3.0" },
-    { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=0.3.0" },
+    { name = "langgraph", marker = "extra == 'all'", specifier = ">=0.5.0" },
+    { name = "langgraph", marker = "extra == 'langgraph'", specifier = ">=0.5.0" },
 ]
 provides-extras = ["langgraph", "all"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "hindsight-langgraph", extras = ["langgraph"] },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
 ]

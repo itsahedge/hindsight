@@ -194,8 +194,13 @@ recall = create_recall_node(
 ### HindsightStore
 
 - **Async-only.** All sync methods (`batch`, `get`, `put`, `delete`, `search`, `list_namespaces`) raise `NotImplementedError`. Use the async variants (`abatch`, `aget`, `aput`, `adelete`, `asearch`, `alist_namespaces`) instead.
-- **`list_namespaces` is session-scoped.** It only tracks namespaces that have been written to via `aput()` during the current session. It does not query Hindsight for all existing banks.
+- **`get()` relies on recall.** There is no direct key lookup — the key is used as a recall query and only exact `document_id` matches are returned. Items that do not rank in the top recall results may appear missing.
+- **`list_namespaces` is session-scoped.** It only tracks namespaces that have been written to via `aput()` during the current process. After a restart, `list_namespaces` returns empty even though data still exists in Hindsight.
 - **`delete` is a no-op.** Calling `adelete()` logs a debug message but does not remove data from Hindsight. Hindsight's memory model is append-oriented; fact superseding is handled automatically during retain.
+
+### Memory Nodes
+
+- **SystemMessage ordering.** The recall node adds a `SystemMessage` with recalled memories. Because `MessagesState` uses `add_messages` (which appends), this message appears after existing messages rather than at position 0. The message has a stable ID (`hindsight_memory_context`) so it is updated rather than duplicated across invocations. If your LLM provider requires system messages first, sort or filter messages in your agent node before passing them to the model.
 
 ### Error Handling
 
@@ -238,7 +243,7 @@ recall = create_recall_node(
 | `client` | `None` | Pre-configured Hindsight client |
 | `hindsight_api_url` | `None` | API URL (used if no client provided) |
 | `api_key` | `None` | API key (used if no client provided) |
-| `budget` | `"low"` | Recall budget level |
+| `budget` | `"mid"` | Recall budget level |
 | `max_tokens` | `4096` | Max tokens for recall results |
 | `max_results` | `10` | Max memories to inject |
 | `tags` | `None` | Tags to filter recall results |
@@ -285,4 +290,4 @@ recall = create_recall_node(
 - Python >= 3.10
 - langchain-core >= 0.3.0
 - hindsight-client >= 0.4.0
-- langgraph >= 0.3.0 *(only for nodes and store patterns — install with `pip install hindsight-langgraph[langgraph]`)*
+- langgraph >= 0.5.0 *(only for nodes and store patterns — install with `pip install hindsight-langgraph[langgraph]`)*

@@ -33,10 +33,10 @@ dependencies = [
 
 [project.optional-dependencies]
 langgraph = [
-    "langgraph>=0.3.0",
+    "langgraph>=0.5.0",
 ]
 all = [
-    "langgraph>=0.3.0",
+    "langgraph>=0.5.0",
 ]
 
 [project.urls]

@@ -81,7 +81,11 @@ __all__ = [
     "HindsightLangGraphConfig",
     "HindsightError",
     "create_hindsight_tools",
-    "create_recall_node",
-    "create_retain_node",
-    "HindsightStore",
 ]
+
+try:
+    import langgraph  # noqa: F401
+
+    __all__ += ["create_recall_node", "create_retain_node", "HindsightStore"]
+except ImportError:
+    pass

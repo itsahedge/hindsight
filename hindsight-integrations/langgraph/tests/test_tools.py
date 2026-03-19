@@ -3,7 +3,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from hindsight_langgraph import (
     configure,
     create_hindsight_tools,
@@ -109,24 +108,18 @@ class TestCreateHindsightTools:
 
     def test_falls_back_to_global_config(self):
         configure(hindsight_api_url="http://localhost:8888")
-        with patch("hindsight_langgraph.tools.Hindsight") as mock_cls:
+        with patch("hindsight_langgraph._client.Hindsight") as mock_cls:
             mock_cls.return_value = _mock_client()
             tools = create_hindsight_tools(bank_id="test")
             assert len(tools) == 3
-            mock_cls.assert_called_once_with(
-                base_url="http://localhost:8888", timeout=30.0
-            )
+            mock_cls.assert_called_once_with(base_url="http://localhost:8888", timeout=30.0)
 
     def test_explicit_url_overrides_config(self):
         configure(hindsight_api_url="http://config:8888")
-        with patch("hindsight_langgraph.tools.Hindsight") as mock_cls:
+        with patch("hindsight_langgraph._client.Hindsight") as mock_cls:
             mock_cls.return_value = _mock_client()
-            create_hindsight_tools(
-                bank_id="test", hindsight_api_url="http://explicit:9999"
-            )
-            mock_cls.assert_called_once_with(
-                base_url="http://explicit:9999", timeout=30.0
-            )
+            create_hindsight_tools(bank_id="test", hindsight_api_url="http://explicit:9999")
+            mock_cls.assert_called_once_with(base_url="http://explicit:9999", timeout=30.0)
 
 
 class TestRetainTool:
@@ -177,9 +170,7 @@ class TestRecallTool:
     @pytest.mark.asyncio
     async def test_recall_returns_numbered_results(self):
         client = _mock_client()
-        client.arecall.return_value = _mock_recall_response(
-            ["User likes Python", "User is in NYC"]
-        )
+        client.arecall.return_value = _mock_recall_response(["User likes Python", "User is in NYC"])
         tools = create_hindsight_tools(
             bank_id="test-bank",
             client=client,

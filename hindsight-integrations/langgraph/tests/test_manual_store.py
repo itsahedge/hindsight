@@ -1,5 +1,7 @@
 """Manual test of HindsightStore as a LangGraph BaseStore."""
+
 import asyncio
+
 from hindsight_client import Hindsight
 from hindsight_langgraph import HindsightStore
 
