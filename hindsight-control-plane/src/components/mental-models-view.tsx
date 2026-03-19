@@ -86,6 +86,9 @@ interface MentalModel {
   max_tokens: number;
   trigger: {
     refresh_after_consolidation: boolean;
+    fact_types?: Array<"world" | "experience" | "observation">;
+    exclude_mental_models?: boolean;
+    exclude_mental_model_ids?: string[];
   };
   last_refreshed_at: string;
   created_at: string;
