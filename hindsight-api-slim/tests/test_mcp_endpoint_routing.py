@@ -334,6 +334,7 @@ async def test_mcp_tool_execution_with_different_mcp_and_tenant_tokens(memory):
                         assert len(result.content) > 0
                         parsed = json.loads(result.content[0].text)
                         assert "banks" in parsed
+                        assert "error" not in parsed, f"Tool call failed with: {parsed.get('error')}"
 
 
 @pytest.mark.asyncio
