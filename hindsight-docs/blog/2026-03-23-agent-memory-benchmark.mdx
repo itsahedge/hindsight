@@ -42,7 +42,9 @@ That era is over. State-of-the-art models now have million-token context windows
 
 This creates a false picture. A system that's cheap, fast, and architecturally sound at scale will score similarly to a brute-force context-stuffer on these datasets. The benchmark can no longer tell them apart.
 
-LoComo and LongMemEval are still a valid foundation — the question formats are good, the evaluation methodology is reasonable, and they remain useful for catching regressions. But they're not enough. The next generation of memory benchmarks needs to test things that can't be solved by a big context window: multi-session accumulation at scale, cost-efficient recall, knowledge updates over time, and memory in agentic settings where the agent itself decides what's worth keeping.
+There's a second problem: both datasets were built around chatbot use cases — conversation history between two people, question-answering over past sessions. That was the dominant paradigm when they were designed. It isn't anymore. Agents today don't just answer questions about their conversation history; they research, plan, execute multi-step tasks, and build knowledge across many different interactions and sources. The memory problems that arise in agentic workflows are fundamentally different from chatbot recall.
+
+LoComo and LongMemEval are still a valid foundation — the question formats are good, the evaluation methodology is reasonable, and they remain useful for catching regressions. But they only cover one slice of the problem. AMB is adding datasets that focus on agentic tasks: memory across tool calls, knowledge built from document research, preferences applied to multi-step decisions. That's where evaluation needs to go.
 
 ## Open results, reproducibly
 
@@ -89,7 +91,7 @@ Exploring the data before running is the fastest way to decide which benchmarks 
 
 ## Hindsight on the new baseline
 
-To establish a reference point for AMB, we re-ran Hindsight against the datasets using the same harness. The last published results came from [our paper](https://arxiv.org/abs/2512.12818), which used version 0.1.0. We've shipped dozens of features and improvements since then. Here's where v0.4.19 lands in RAG mode:
+To establish a reference point for AMB, we re-ran Hindsight against the datasets using the same harness. The last published results came from [our paper](https://arxiv.org/abs/2512.12818), which used version 0.1.0. We've shipped dozens of features and improvements since then. Here's where v0.4.19 lands in single-query mode:
 
 | Dataset | Accuracy |
 |---|---|
@@ -117,9 +119,9 @@ These results will serve as the reference point for AMB going forward. Every fut
 
 LLM orchestration is evolving fast, and there isn't one right way to build a memory-augmented agent. AMB reflects that by supporting two distinct evaluation modes.
 
-**One-shot RAG**: a single query against the memory system, results passed directly to the LLM for answer generation. Fast, predictable, low latency. The tradeoff is coverage — one query may not surface everything needed for multi-hop questions where the answer requires connecting facts from different parts of the memory.
+**Single-query**: one retrieval call against the memory system, results passed directly to the LLM for answer generation. Fast, predictable, low latency. The tradeoff is coverage — a single query may not surface everything needed for multi-hop questions where the answer requires connecting facts from different parts of the memory.
 
-**Agentic RAG**: the LLM drives retrieval through tool calls, issuing multiple queries, inspecting results, and deciding when it has enough to answer. Consistently better on complex and multi-hop questions. The tradeoff is latency and cost — more round-trips, more tokens, more time.
+**Agentic**: the LLM drives retrieval through tool calls, issuing multiple queries, inspecting results, and deciding when it has enough to answer. Consistently better on complex and multi-hop questions. The tradeoff is latency and cost — more round-trips, more tokens, more time.
 
 Both are legitimate architectures depending on what you're building. A customer support agent where response time matters looks different from a research assistant where thoroughness does. AMB lets you run both modes against the same dataset and compare the results directly — accuracy, latency, and token cost side by side — so you can make that tradeoff deliberately rather than by default.
 
