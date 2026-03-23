@@ -16,8 +16,6 @@ If you've been watching what [Openclaw][2] does with Hindsight — this is the s
 
 <!-- truncate -->
 
----
-
 ## What We're Building
 
 By the end of this tutorial, you'll have:
@@ -27,8 +25,6 @@ By the end of this tutorial, you'll have:
 3. **A persistent agent** that gets smarter over time — it remembers your projects, your preferences, your architectural decisions
 
 The stack is simple: Claude Code does the thinking, Telegram provides the interface, Hindsight provides the memory. No custom code, no infrastructure beyond what runs on your machine.
-
----
 
 ## Part 1: Claude Code on Telegram
 
@@ -130,8 +126,6 @@ A working Claude Code agent on Telegram. You can send it messages from your phon
 But the memory is limited. Claude Code's built-in markdown memory captures preferences and instructions, but it doesn't retain the substance of your conversations — the decisions you explored, the trade-offs you weighed, the context behind why things are the way they are. Restart the session, and that conversational depth is lost. For quick tasks, that's fine. For a long-running assistant, it's a ceiling.
 
 Let's fix that.
-
----
 
 ## Part 2: Adding Long-Term Memory with Hindsight
 
@@ -284,8 +278,6 @@ Here's what that progression looks like:
 
 This is the difference between a stateless tool and a contextual collaborator. Claude Code provides the reasoning and the codebase access. Hindsight provides the continuity — the ability to accumulate understanding over time, session after session, and bring exactly the right slice of that understanding to bear on each new question. Together, they produce an agent whose quality of response improves the more you use it.
 
----
-
 ## Why Claude Code
 
 If you know [Openclaw][10], this will sound familiar. Openclaw has had Hindsight integration for months — it's what gives some Openclaw agents their memory. This setup achieves the same result using a different stack. The question is: which fits your workflow better?
@@ -313,8 +305,6 @@ For developers who are already invested in Claude and want a streamlined, single
 
 The Hindsight plugin for Claude Code is a [complete port of the Openclaw plugin][11] — same architecture, same configuration options, same recall/retain logic. If you're already using Hindsight with Openclaw, the concepts are identical. The difference is the foundation you're building on.
 
----
-
 ## Dynamic Memory Banks
 
 For advanced setups, the plugin supports dynamic bank IDs — isolating memory per project, per channel, or per user:
@@ -327,8 +317,6 @@ For advanced setups, the plugin supports dynamic bank IDs — isolating memory p
 ```
 
 With this configuration, each project directory gets its own memory bank. Your frontend project's memories stay separate from your backend project's memories. You can also add `"channel"` and `"user"` dimensions for multi-user or multi-channel agents, by setting `HINDSIGHT_CHANNEL_ID` and `HINDSIGHT_USER_ID` environment variables.
-
----
 
 ## Troubleshooting
 
@@ -343,8 +331,6 @@ With this configuration, each project directory gets its own memory bank. Your f
 **Hindsight daemon not starting**: Ensure `uvx` is on your PATH (`pip install uv` or `brew install uv`). Check that an LLM API key is set. Review logs at `~/.hindsight/profiles/claude-code.log`.
 
 **High latency on recall**: The recall hook has a 12-second timeout (the API call itself times out at 10s, with margin for processing). Try `"recallBudget": "low"` for faster responses, or reduce `"recallMaxTokens"`.
-
----
 
 ## What's Next
 
