@@ -293,6 +293,14 @@
         },
         {
           "type": "doc",
+          "id": "sdks/integrations/smolagents",
+          "label": "SmolAgents",
+          "customProps": {
+            "icon": "/img/icons/smolagents.png"
+          }
+        },
+        {
+          "type": "doc",
           "id": "sdks/integrations/skills",
           "label": "Skills",
           "customProps": {
