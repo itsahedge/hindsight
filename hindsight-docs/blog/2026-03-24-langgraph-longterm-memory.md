@@ -256,4 +256,4 @@ Long-term memory unlocks a different class of agent behavior. A few patterns we'
 
 In all three cases, the agent gets meaningfully better the longer it runs — not just because of a longer context window, but because Hindsight distills conversations into structured knowledge it can retrieve precisely when relevant.
 
-Full docs: [LangGraph integration](/docs/sdks/integrations/langgraph) | [GitHub](https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/langgraph)
+Full docs: [LangGraph integration](/sdks/integrations/langgraph) | [GitHub](https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/langgraph)
