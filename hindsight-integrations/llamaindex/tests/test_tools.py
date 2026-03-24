@@ -365,6 +365,65 @@ class TestReflectTool:
             spec.reflect_on_memory("query")
 
 
+class TestLlamaIndexCompatibility:
+    """Verify tools integrate correctly with LlamaIndex agent classes."""
+
+    def test_tools_have_correct_metadata(self):
+        """Each tool should have name, description, and fn_schema."""
+        client = _mock_client()
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        tools = spec.to_tool_list()
+
+        for tool in tools:
+            assert tool.metadata.name is not None
+            assert tool.metadata.description is not None
+            assert tool.metadata.fn_schema is not None
+
+    def test_tool_names_match_spec_functions(self):
+        client = _mock_client()
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        tools = spec.to_tool_list()
+        tool_names = {t.metadata.name for t in tools}
+        assert tool_names == {"retain_memory", "recall_memory", "reflect_on_memory"}
+
+    def test_tools_accepted_by_react_agent(self):
+        """ReActAgent should accept our tools without error."""
+        from llama_index.core.agent import ReActAgent
+        from llama_index.core.llms import MockLLM
+
+        client = _mock_client()
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        tools = spec.to_tool_list()
+
+        # Should not raise — verifies tool format is compatible
+        agent = ReActAgent(tools=tools, llm=MockLLM())
+        assert agent is not None
+
+    def test_retain_tool_callable_via_function_tool(self):
+        """FunctionTool.call() should invoke retain_memory correctly."""
+        client = _mock_client()
+        client.retain.return_value = _mock_retain_response()
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        tools = spec.to_tool_list(spec_functions=["retain_memory"])
+        tool = tools[0]
+
+        result = tool.call(content="test memory")
+        assert "stored successfully" in str(result)
+        client.retain.assert_called_once()
+
+    def test_recall_tool_callable_via_function_tool(self):
+        """FunctionTool.call() should invoke recall_memory correctly."""
+        client = _mock_client()
+        client.recall.return_value = _mock_recall_response(["some fact"])
+        spec = HindsightToolSpec(bank_id="test", client=client)
+        tools = spec.to_tool_list(spec_functions=["recall_memory"])
+        tool = tools[0]
+
+        result = tool.call(query="test query")
+        assert "some fact" in str(result)
+        client.recall.assert_called_once()
+
+
 class TestConfigFallback:
     def setup_method(self):
         reset_config()

@@ -13,7 +13,7 @@ Basic usage with the tool spec::
     tools = spec.to_tool_list()
 
     # Use with a LlamaIndex agent
-    agent = ReActAgent.from_tools(tools, llm=llm)
+    agent = ReActAgent(tools=tools, llm=llm)
 
 Convenience factory::
 

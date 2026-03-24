@@ -31,11 +31,15 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
 
 client = Hindsight(base_url="http://localhost:8888")
+
+# Create the memory bank first (one-time setup)
+client.create_bank("user-123", name="User 123 Memory")
+
 spec = HindsightToolSpec(client=client, bank_id="user-123")
 tools = spec.to_tool_list()
 
-agent = ReActAgent.from_tools(tools, llm=OpenAI(model="gpt-4o"))
-response = agent.chat("Remember that I prefer dark mode")
+agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
+response = await agent.run("Remember that I prefer dark mode")
 ```
 
 ## Quick Start: Factory Function
@@ -51,8 +55,8 @@ from llama_index.core.agent import ReActAgent
 client = Hindsight(base_url="http://localhost:8888")
 tools = create_hindsight_tools(client=client, bank_id="user-123")
 
-agent = ReActAgent.from_tools(tools, llm=OpenAI(model="gpt-4o"))
-response = agent.chat("What do you remember about me?")
+agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
+response = await agent.run("What do you remember about me?")
 ```
 
 ## Selecting Tools
@@ -149,6 +153,50 @@ Accepts all `HindsightToolSpec` parameters plus:
 | `recall_tags` | `list[str]` | `None` | Default recall filter tags |
 | `recall_tags_match` | `str` | `"any"` | Default tag matching mode |
 | `verbose` | `bool` | `False` | Enable verbose logging |
+
+## Production Patterns
+
+### Memory Scoping with Tags
+
+Use tags to organize memories by source, conversation, or topic:
+
+```python
+spec = HindsightToolSpec(
+    client=client,
+    bank_id="user-123",
+    tags=["source:chat", "session:abc"],        # applied to all retains
+    recall_tags=["source:chat"],                 # filter recalls to chat memories
+    recall_tags_match="any",                     # match any tag (default)
+)
+```
+
+For multi-tenant applications, use one bank per user and tags per context (e.g., `project:X`, `channel:support`).
+
+### Error Handling
+
+All tool methods raise `HindsightError` on failure. Wrap agent execution to handle memory errors gracefully:
+
+```python
+from hindsight_llamaindex import HindsightError
+
+try:
+    response = await agent.run("What do you know about me?")
+except HindsightError as e:
+    # Memory unavailable — agent can still function without memory
+    logger.warning(f"Memory error: {e}")
+```
+
+### Bank Lifecycle
+
+Banks must be created before use and should be created once per user/entity:
+
+```python
+# One-time setup (e.g., during user onboarding)
+client.create_bank(f"user-{user_id}", name=f"{user_name}'s Memory")
+
+# Subsequent agent creation — bank already exists
+spec = HindsightToolSpec(client=client, bank_id=f"user-{user_id}")
+```
 
 ## Requirements
 

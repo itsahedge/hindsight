@@ -26,11 +26,15 @@ from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
 
 client = Hindsight(base_url="http://localhost:8888")
+
+# Create the memory bank first (one-time setup)
+client.create_bank("user-123", name="User 123 Memory")
+
 spec = HindsightToolSpec(client=client, bank_id="user-123")
 tools = spec.to_tool_list()
 
-agent = ReActAgent.from_tools(tools, llm=OpenAI(model="gpt-4o"))
-response = agent.chat("Remember that I prefer dark mode")
+agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
+response = await agent.run("Remember that I prefer dark mode")
 ```
 
 ### Selective Tools
@@ -55,7 +59,7 @@ tools = create_hindsight_tools(
     include_reflect=False,  # only retain + recall
 )
 
-agent = ReActAgent.from_tools(tools, llm=llm)
+agent = ReActAgent(tools=tools, llm=llm)
 ```
 
 ## Configuration
@@ -86,6 +90,19 @@ All factory functions accept `client`, `hindsight_api_url`, and `api_key` to ove
 | `tags` | Tags applied to retain operations | `None` |
 | `recall_tags` | Tags to filter recall results | `None` |
 | `recall_tags_match` | Tag matching: `any`, `all`, `any_strict`, `all_strict` | `any` |
+
+## Memory Scoping
+
+Use one bank per user/entity and tags to organize memories by context:
+
+```python
+spec = HindsightToolSpec(
+    client=client,
+    bank_id=f"user-{user_id}",           # one bank per user
+    tags=["source:chat", "project:X"],     # scope retains by context
+    recall_tags=["source:chat"],           # filter recalls to chat memories
+)
+```
 
 ## Requirements
 

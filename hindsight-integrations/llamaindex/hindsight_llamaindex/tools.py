@@ -53,7 +53,7 @@ class HindsightToolSpec(BaseToolSpec):
         tools = spec.to_tool_list()
 
         # Use with a LlamaIndex agent
-        agent = ReActAgent.from_tools(tools, llm=llm)
+        agent = ReActAgent(tools=tools, llm=llm)
     """
 
     spec_functions = ["retain_memory", "recall_memory", "reflect_on_memory"]

@@ -83,15 +83,23 @@ This pulls in `llama-index-core` and `hindsight-client` as dependencies.
 
 ---
 
-## Step 3 -- Create an Agent with Memory
+## Step 3 -- Create the Memory Bank
+
+Banks must exist before use. Create one per user:
 
 ```python
 from hindsight_client import Hindsight
+
+client = Hindsight(base_url="http://localhost:8888")
+client.create_bank("user-123", name="User 123 Memory")
+```
+
+## Step 4 -- Create an Agent with Memory
+
+```python
 from hindsight_llamaindex import HindsightToolSpec
 from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
-
-client = Hindsight(base_url="http://localhost:8888")
 
 spec = HindsightToolSpec(
     client=client,
@@ -101,8 +109,8 @@ spec = HindsightToolSpec(
 )
 tools = spec.to_tool_list()
 
-agent = ReActAgent.from_tools(
-    tools,
+agent = ReActAgent(
+    tools=tools,
     llm=OpenAI(model="gpt-4o-mini"),
     system_prompt=(
         "You are a helpful assistant with long-term memory. "
@@ -112,11 +120,11 @@ agent = ReActAgent.from_tools(
 )
 
 # Session 1: store preferences
-agent.chat("I'm a data scientist. I use Python, SQL, and VS Code with dark mode.")
+await agent.run("I'm a data scientist. I use Python, SQL, and VS Code with dark mode.")
 
 # Session 2 (new agent instance, same bank_id): recall works
-agent = ReActAgent.from_tools(tools, llm=OpenAI(model="gpt-4o-mini"))
-response = agent.chat("What IDE do I use?")
+agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o-mini"))
+response = await agent.run("What IDE do I use?")
 # → "You use VS Code with dark mode."
 ```
 
@@ -137,7 +145,7 @@ tools = create_hindsight_tools(
     include_reflect=False,  # only retain + recall
 )
 
-agent = ReActAgent.from_tools(tools, llm=llm)
+agent = ReActAgent(tools=tools, llm=llm)
 ```
 
 The factory wraps `HindsightToolSpec` and returns a filtered list of `FunctionTool` instances. Use `include_retain`, `include_recall`, and `include_reflect` flags to control which tools are exposed.
@@ -169,13 +177,34 @@ def create_agent_for_user(user_id: str) -> ReActAgent:
         client=client,
         bank_id=f"user-{user_id}",
     )
-    return ReActAgent.from_tools(
-        spec.to_tool_list(),
+    return ReActAgent(
+        tools=spec.to_tool_list(),
         llm=OpenAI(model="gpt-4o-mini"),
     )
 ```
 
 Each bank is fully isolated -- no cross-user data leakage.
+
+---
+
+## Production Patterns
+
+### Memory Scoping with Tags
+
+Use tags to organize memories by source, conversation, or topic. For multi-tenant applications, use one bank per user and tags per context:
+
+```python
+spec = HindsightToolSpec(
+    client=client,
+    bank_id=f"user-{user_id}",
+    tags=["source:chat", f"session:{session_id}"],
+    recall_tags=["source:chat"],
+)
+```
+
+### Error Handling
+
+All tool methods raise `HindsightError` on failure. In production, wrap agent execution to handle memory unavailability gracefully — agents can still function without memory.
 
 ---
 
@@ -188,6 +217,14 @@ Each bank is fully isolated -- no cross-user data leakage.
 **3. Budget tuning.** The default `budget="mid"` balances speed and thoroughness. For latency-sensitive agents, use `"low"`. For deep analysis, use `"high"`. Budget affects how many retrieval strategies run and how much reranking happens.
 
 **4. Reflect vs Recall.** Use `recall_memory` when you need raw facts ("What IDE do I use?"). Use `reflect_on_memory` when you need synthesis ("Based on everything you know, what should I prioritize?"). Reflect is more expensive but produces reasoned answers.
+
+---
+
+## When NOT to use this
+
+- **In-session context only** — If your agent only needs to remember things within a single conversation, LlamaIndex's `ChatMemoryBuffer` is simpler and has zero latency overhead.
+- **Document search** — If you need vector search over documents (RAG), use LlamaIndex's built-in `VectorStoreIndex`. Hindsight is a memory system for facts learned over time, not a document store.
+- **Ephemeral agents** — If each agent invocation is stateless by design (batch processing, one-shot tasks), persistent memory adds complexity without benefit.
 
 ---
 
