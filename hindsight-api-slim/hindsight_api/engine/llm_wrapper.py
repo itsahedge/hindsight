@@ -126,6 +126,7 @@ _PROVIDERS_WITHOUT_API_KEY = frozenset(
         "claude-code",
         "mock",
         "vertexai",
+        "litellm",
     }
 )
 
@@ -172,6 +173,7 @@ def create_llm_provider(
         ClaudeCodeLLM,
         CodexLLM,
         GeminiLLM,
+        LiteLLMLLM,
         MockLLM,
         OpenAICompatibleLLM,
     )
@@ -220,6 +222,15 @@ def create_llm_provider(
 
     elif provider_lower == "anthropic":
         return AnthropicLLM(
+            provider=provider,
+            api_key=api_key,
+            base_url=base_url,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
+
+    elif provider_lower == "litellm":
+        return LiteLLMLLM(
             provider=provider,
             api_key=api_key,
             base_url=base_url,
@@ -297,6 +308,7 @@ class LLMProvider:
             "claude-code",
             "mock",
             "minimax",
+            "litellm",
         ]
         if self.provider not in valid_providers:
             raise ValueError(f"Invalid LLM provider: {self.provider}. Must be one of: {', '.join(valid_providers)}")
@@ -675,10 +687,13 @@ class LLMProvider:
         api_key = os.getenv("HINDSIGHT_API_LLM_API_KEY", "")
 
         # API key not needed for openai-codex (uses OAuth), claude-code (uses Keychain OAuth),
-        # ollama (local), or vertexai (uses GCP service account credentials)
-        if not api_key and provider not in ("openai-codex", "claude-code", "ollama", "vertexai"):
+        # ollama (local), vertexai (uses GCP service account credentials),
+        # or litellm (uses provider-specific auth, e.g. AWS credentials for Bedrock)
+        if not api_key and not requires_api_key(provider):
+            pass  # Provider handles its own auth
+        elif not api_key:
             raise ValueError(
-                "HINDSIGHT_API_LLM_API_KEY environment variable is required (unless using openai-codex or claude-code)"
+                "HINDSIGHT_API_LLM_API_KEY environment variable is required (unless using openai-codex, claude-code, or litellm)"
             )
 
         base_url = os.getenv("HINDSIGHT_API_LLM_BASE_URL", "")
@@ -692,12 +707,13 @@ class LLMProvider:
         provider = os.getenv("HINDSIGHT_API_ANSWER_LLM_PROVIDER", os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"))
         api_key = os.getenv("HINDSIGHT_API_ANSWER_LLM_API_KEY", os.getenv("HINDSIGHT_API_LLM_API_KEY", ""))
 
-        # API key not needed for openai-codex (uses OAuth), claude-code (uses Keychain OAuth),
-        # ollama (local), or vertexai (uses GCP service account credentials)
-        if not api_key and provider not in ("openai-codex", "claude-code", "ollama", "vertexai"):
+        # API key not needed for providers with their own auth mechanisms
+        if not api_key and not requires_api_key(provider):
+            pass  # Provider handles its own auth
+        elif not api_key:
             raise ValueError(
                 "HINDSIGHT_API_LLM_API_KEY or HINDSIGHT_API_ANSWER_LLM_API_KEY environment variable is required "
-                "(unless using openai-codex or claude-code)"
+                "(unless using openai-codex, claude-code, or litellm)"
             )
 
         base_url = os.getenv("HINDSIGHT_API_ANSWER_LLM_BASE_URL", os.getenv("HINDSIGHT_API_LLM_BASE_URL", ""))
@@ -711,12 +727,13 @@ class LLMProvider:
         provider = os.getenv("HINDSIGHT_API_JUDGE_LLM_PROVIDER", os.getenv("HINDSIGHT_API_LLM_PROVIDER", "groq"))
         api_key = os.getenv("HINDSIGHT_API_JUDGE_LLM_API_KEY", os.getenv("HINDSIGHT_API_LLM_API_KEY", ""))
 
-        # API key not needed for openai-codex (uses OAuth), claude-code (uses Keychain OAuth),
-        # ollama (local), or vertexai (uses GCP service account credentials)
-        if not api_key and provider not in ("openai-codex", "claude-code", "ollama", "vertexai"):
+        # API key not needed for providers with their own auth mechanisms
+        if not api_key and not requires_api_key(provider):
+            pass  # Provider handles its own auth
+        elif not api_key:
             raise ValueError(
                 "HINDSIGHT_API_LLM_API_KEY or HINDSIGHT_API_JUDGE_LLM_API_KEY environment variable is required "
-                "(unless using openai-codex or claude-code)"
+                "(unless using openai-codex, claude-code, or litellm)"
             )
 
         base_url = os.getenv("HINDSIGHT_API_JUDGE_LLM_BASE_URL", os.getenv("HINDSIGHT_API_LLM_BASE_URL", ""))
