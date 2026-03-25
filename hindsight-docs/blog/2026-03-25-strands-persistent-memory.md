@@ -7,6 +7,8 @@ image: /img/blog/strands-persistent-memory.png
 hide_table_of_contents: true
 ---
 
+![Why Your AWS Strands Agent Keeps Starting From Scratch (And How to Stop It)](/img/blog/strands-persistent-memory.png)
+
 AWS Strands agents are stateless by default — every session starts cold. Here's how to add persistent long-term memory using `hindsight-strands`, so your agent remembers what matters across runs.
 
 <!-- truncate -->
