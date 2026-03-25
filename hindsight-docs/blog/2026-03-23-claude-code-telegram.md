@@ -196,7 +196,7 @@ These are the settings that shape how your agent remembers. The defaults work we
 
 | Setting              | Default              | What it does                                                                                          |
 | -------------------- | -------------------- | ----------------------------------------------------------------------------------------------------- |
-| `bankId`             | `"claude_code"`      | Names the memory bank. Change this to isolate memory per agent.                                       |
+| `bankId`             | `"claude-code"`      | Names the memory bank. Change this to isolate memory per agent.                                       |
 | `bankMission`        | generic assistant    | Tells Hindsight who this agent is — helps it extract more relevant facts.                             |
 | `retainMission`      | technical extraction | Guides what Hindsight should remember from conversations.                                             |
 | `retainEveryNTurns`  | `10`                 | Retains every 10th turn in a sliding window — avoids API bombardment while maintaining full coverage. |
