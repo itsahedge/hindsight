@@ -1,5 +1,9 @@
 # Why Your AWS Strands Agent Keeps Starting From Scratch (And How to Stop It)
 
+AWS Strands agents are stateless by default — every session starts cold. Here's how to add persistent long-term memory using `hindsight-strands`, so your agent remembers what matters across runs.
+
+<!-- truncate -->
+
 ## TL;DR
 
 - AWS Strands agents are stateless by default — every session starts cold
@@ -7,8 +11,6 @@
 - `memory_instructions()` pre-loads relevant memories directly into the system prompt before the agent starts
 - Works with any Strands-compatible LLM backend: Bedrock, Anthropic, OpenAI
 - You control what gets remembered, how much is recalled, and how memories are scoped with tags
-
-<!-- truncate -->
 
 ---
 
