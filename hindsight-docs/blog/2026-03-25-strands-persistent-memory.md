@@ -275,7 +275,7 @@ The mental model: memory banks are scoped by `bank_id`, tags let you filter acro
 ## Next Steps
 
 - [hindsight-strands on PyPI](https://pypi.org/project/hindsight-strands/)
-- [Hindsight docs: Strands integration guide](https://docs.hindsight.vectorize.io/sdks/integrations/strands)
+- [Hindsight docs: Strands integration guide](https://hindsight.vectorize.io/sdks/integrations/strands)
 - Run Hindsight locally with Docker and try the quick start above
 - Explore `memory_instructions()` for pre-warming agents in customer-facing applications
 - Check out the [CrewAI](https://hindsight.vectorize.io/blog/2026-03-02-crewai) and [LangGraph](https://hindsight.vectorize.io/blog/2026-03-24-langgraph-longterm-memory) integration posts for comparison on similar patterns
