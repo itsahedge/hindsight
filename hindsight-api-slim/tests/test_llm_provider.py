@@ -235,7 +235,7 @@ async def test_llm_provider_api_methods(provider: str, model: str):
 
 @pytest.mark.parametrize("provider,model", MODEL_MATRIX)
 @pytest.mark.asyncio
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(600)  # 600s: some providers (e.g., bedrock via litellm) need extra time for fact extraction
 async def test_llm_provider_memory_operations(provider: str, model: str):
     """
     Test LLM provider with actual memory operations: fact extraction and reflect.
