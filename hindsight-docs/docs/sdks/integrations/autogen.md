@@ -17,8 +17,10 @@ Persistent long-term memory for [AutoGen](https://microsoft.github.io/autogen/) 
 ## Installation
 
 ```bash
-pip install hindsight-autogen
+pip install hindsight-autogen autogen-agentchat "autogen-ext[openai]"
 ```
+
+`hindsight-autogen` pulls in `autogen-core` and `hindsight-client`. You also need `autogen-agentchat` for `AssistantAgent` and `autogen-ext[openai]` for the OpenAI model client.
 
 ## Quick Start
 
