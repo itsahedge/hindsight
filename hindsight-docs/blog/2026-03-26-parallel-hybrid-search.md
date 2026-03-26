@@ -4,11 +4,11 @@ description: Sequential async queries were killing our retrieval latency. Here's
 authors: [hindsight]
 date: 2026-03-26T12:00
 tags: [engineering, retrieval, search, python, asyncio, performance]
-image: /img/blog/blog-default.jpg
+image: /img/blog/parallel-hybrid-search.png
 hide_table_of_contents: true
 ---
 
-![How We Built a 4-Way Hybrid Search System That Actually Runs in Parallel](/img/blog/blog-default.jpg)
+![How We Built a 4-Way Hybrid Search System That Actually Runs in Parallel](/img/blog/parallel-hybrid-search.png)
 
 When we were designing Hindsight's memory retrieval, we had to confront one of the hardest challenges with AI data retrieval.
 
