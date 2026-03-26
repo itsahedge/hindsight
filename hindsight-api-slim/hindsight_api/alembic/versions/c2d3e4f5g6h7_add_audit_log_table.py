@@ -1,12 +1,12 @@
 """Add audit_log table for feature usage tracking.
 
-Merge migration that combines the remaining two heads (b1c2d3e4f5g6 + a2b3c4d5e6f8).
+Merge migration that combines the two existing heads (a3b4c5d6e7f8 + c8e5f2a3b4d1).
 
 Stores raw request/response as JSONB for expandability without future migrations.
 The metadata JSONB column allows adding arbitrary fields in the future.
 
 Revision ID: c2d3e4f5g6h7
-Revises: b1c2d3e4f5g6, a2b3c4d5e6f8
+Revises: a3b4c5d6e7f8, c8e5f2a3b4d1
 Create Date: 2026-03-26
 """
 
@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from alembic import context, op
 
 revision: str = "c2d3e4f5g6h7"
-down_revision: str | Sequence[str] | None = ("b1c2d3e4f5g6", "a2b3c4d5e6f8")
+down_revision: str | Sequence[str] | None = ("a3b4c5d6e7f8", "c8e5f2a3b4d1")
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
