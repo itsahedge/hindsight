@@ -19,7 +19,6 @@ Exit codes:
 
 import json
 import os
-import re
 import sys
 import time
 
@@ -39,28 +38,6 @@ from lib.daemon import get_api_url
 from lib.state import write_state
 
 LAST_RECALL_STATE = "last_recall.json"
-
-# Patterns that suggest the user wants synthesis rather than raw facts.
-# These prompts benefit from reflect's agentic loop over recall's fact list.
-_REFLECT_RE = re.compile(
-    r"\b("
-    r"what do you know"
-    r"|what('s| is) my\b"
-    r"|who am i"
-    r"|tell me about (myself|me|my)"
-    r"|summarize (my|what)"
-    r"|my (background|context|profile|history|situation)"
-    r"|remind me (about|what|who|where|when)"
-    r"|give me (a summary|an overview|context)"
-    r"|what have (i|we) (talked|discussed|said)"
-    r")",
-    re.IGNORECASE,
-)
-
-
-def _pick_mode(prompt: str) -> str:
-    """Choose 'reflect' for synthesis queries, 'recall' for everything else."""
-    return "reflect" if _REFLECT_RE.search(prompt) else "recall"
 
 
 def main():
@@ -121,93 +98,49 @@ def main():
     if len(query) > recall_max_query_chars:
         query = query[:recall_max_query_chars]
 
-    recall_mode = config.get("recallMode", "auto")
-    if recall_mode == "auto":
-        recall_mode = _pick_mode(prompt)
-        debug_log(config, f"Auto mode selected: {recall_mode}")
     current_time = format_current_time()
     preamble = config.get("recallPromptPreamble", "")
 
-    if recall_mode == "reflect":
-        debug_log(config, f"Reflecting from bank '{bank_id}', query length: {len(query)}")
-        try:
-            response = client.reflect(
-                bank_id=bank_id,
-                query=query,
-                budget=config.get("recallBudget", "mid"),
-                max_tokens=config.get("recallMaxTokens", 1024),
-                timeout=25,
-            )
-        except Exception as e:
-            print(f"[Hindsight] Reflect failed: {e}", file=sys.stderr)
-            return
-
-        answer = response.get("text", "").strip()
-        if not answer:
-            debug_log(config, "Reflect returned no answer")
-            return
-
-        debug_log(config, f"Reflect response: {answer[:100]}...")
-
-        context_message = (
-            f"<hindsight_memories>\n"
-            f"{preamble}\n"
-            f"Current time - {current_time}\n\n"
-            f"{answer}\n"
-            f"</hindsight_memories>"
+    debug_log(config, f"Recalling from bank '{bank_id}', query length: {len(query)}")
+    try:
+        response = client.recall(
+            bank_id=bank_id,
+            query=query,
+            max_tokens=config.get("recallMaxTokens", 1024),
+            budget=config.get("recallBudget", "mid"),
+            types=config.get("recallTypes"),
+            timeout=10,
         )
+    except Exception as e:
+        print(f"[Hindsight] Recall failed: {e}", file=sys.stderr)
+        return
 
-        write_state(
-            LAST_RECALL_STATE,
-            {
-                "context": context_message,
-                "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "bank_id": bank_id,
-                "result_count": 1,
-            },
-        )
+    results = response.get("results", [])
+    if not results:
+        debug_log(config, "No memories found")
+        return
 
-    else:
-        debug_log(config, f"Recalling from bank '{bank_id}', query length: {len(query)}")
-        try:
-            response = client.recall(
-                bank_id=bank_id,
-                query=query,
-                max_tokens=config.get("recallMaxTokens", 1024),
-                budget=config.get("recallBudget", "mid"),
-                types=config.get("recallTypes"),
-                timeout=10,
-            )
-        except Exception as e:
-            print(f"[Hindsight] Recall failed: {e}", file=sys.stderr)
-            return
+    debug_log(config, f"Injecting {len(results)} memories")
 
-        results = response.get("results", [])
-        if not results:
-            debug_log(config, "No memories found")
-            return
+    memories_formatted = format_memories(results)
 
-        debug_log(config, f"Injecting {len(results)} memories")
+    context_message = (
+        f"<hindsight_memories>\n"
+        f"{preamble}\n"
+        f"Current time - {current_time}\n\n"
+        f"{memories_formatted}\n"
+        f"</hindsight_memories>"
+    )
 
-        memories_formatted = format_memories(results)
-
-        context_message = (
-            f"<hindsight_memories>\n"
-            f"{preamble}\n"
-            f"Current time - {current_time}\n\n"
-            f"{memories_formatted}\n"
-            f"</hindsight_memories>"
-        )
-
-        write_state(
-            LAST_RECALL_STATE,
-            {
-                "context": context_message,
-                "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                "bank_id": bank_id,
-                "result_count": len(results),
-            },
-        )
+    write_state(
+        LAST_RECALL_STATE,
+        {
+            "context": context_message,
+            "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "bank_id": bank_id,
+            "result_count": len(results),
+        },
+    )
 
     # Output JSON for Codex hook system
     output = {
