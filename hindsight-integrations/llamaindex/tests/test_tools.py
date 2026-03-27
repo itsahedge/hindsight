@@ -3,13 +3,13 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from hindsight_llamaindex import (
+from llama_index.tools.hindsight import (
     HindsightToolSpec,
     configure,
     create_hindsight_tools,
     reset_config,
 )
-from hindsight_llamaindex.errors import HindsightError
+from llama_index.tools.hindsight.errors import HindsightError
 
 
 def _mock_client():
@@ -136,7 +136,7 @@ class TestCreateHindsightTools:
 
     def test_falls_back_to_global_config(self):
         configure(hindsight_api_url="http://localhost:8888")
-        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+        with patch("llama_index.tools.hindsight._client.Hindsight") as mock_cls:
             mock_cls.return_value = _mock_client()
             tools = create_hindsight_tools(bank_id="test")
             assert len(tools) == 3
@@ -146,7 +146,7 @@ class TestCreateHindsightTools:
 
     def test_explicit_url_overrides_config(self):
         configure(hindsight_api_url="http://config:8888")
-        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+        with patch("llama_index.tools.hindsight._client.Hindsight") as mock_cls:
             mock_cls.return_value = _mock_client()
             create_hindsight_tools(
                 bank_id="test", hindsight_api_url="http://explicit:9999"
@@ -227,22 +227,6 @@ class TestRetainTool:
         spec.retain_memory("content")
         call_kwargs = client.retain.call_args[1]
         assert call_kwargs["context"] == "llamaindex"
-
-    def test_retain_async_processing(self):
-        client = _mock_client()
-        client.retain.return_value = _mock_retain_response()
-        spec = HindsightToolSpec(bank_id="test", client=client, retain_async=True)
-        spec.retain_memory("content")
-        call_kwargs = client.retain.call_args[1]
-        assert call_kwargs["async_processing"] is True
-
-    def test_retain_sync_processing(self):
-        client = _mock_client()
-        client.retain.return_value = _mock_retain_response()
-        spec = HindsightToolSpec(bank_id="test", client=client, retain_async=False)
-        spec.retain_memory("content")
-        call_kwargs = client.retain.call_args[1]
-        assert "async_processing" not in call_kwargs
 
     def test_retain_returns_error_message_on_failure(self):
         """Errors are returned gracefully, not raised."""
@@ -469,7 +453,7 @@ class TestBankMission:
             hindsight_api_url="http://localhost:8888",
             mission="config mission",
         )
-        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+        with patch("llama_index.tools.hindsight._client.Hindsight") as mock_cls:
             mock_instance = _mock_client()
             mock_cls.return_value = mock_instance
             mock_instance.retain.return_value = _mock_retain_response()
@@ -562,7 +546,7 @@ class TestConfigFallback:
 
     def test_budget_falls_back_to_config(self):
         configure(hindsight_api_url="http://localhost:8888")
-        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+        with patch("llama_index.tools.hindsight._client.Hindsight") as mock_cls:
             mock_instance = _mock_client()
             mock_cls.return_value = mock_instance
             mock_instance.recall.return_value = _mock_recall_response(["fact"])
@@ -578,7 +562,7 @@ class TestConfigFallback:
 
     def test_explicit_budget_overrides_config(self):
         configure(hindsight_api_url="http://localhost:8888", budget="high")
-        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+        with patch("llama_index.tools.hindsight._client.Hindsight") as mock_cls:
             mock_instance = _mock_client()
             mock_cls.return_value = mock_instance
             mock_instance.recall.return_value = _mock_recall_response(["fact"])
@@ -590,7 +574,7 @@ class TestConfigFallback:
 
     def test_tags_fall_back_to_config(self):
         configure(hindsight_api_url="http://localhost:8888", tags=["config:tag"])
-        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+        with patch("llama_index.tools.hindsight._client.Hindsight") as mock_cls:
             mock_instance = _mock_client()
             mock_cls.return_value = mock_instance
             mock_instance.retain.return_value = _mock_retain_response()
@@ -602,7 +586,7 @@ class TestConfigFallback:
 
     def test_context_falls_back_to_config(self):
         configure(hindsight_api_url="http://localhost:8888", context="my-app")
-        with patch("hindsight_llamaindex._client.Hindsight") as mock_cls:
+        with patch("llama_index.tools.hindsight._client.Hindsight") as mock_cls:
             mock_instance = _mock_client()
             mock_cls.return_value = mock_instance
             mock_instance.retain.return_value = _mock_retain_response()

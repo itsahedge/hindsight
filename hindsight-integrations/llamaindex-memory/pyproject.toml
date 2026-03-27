@@ -1,7 +1,7 @@
 [project]
-name = "llama-index-tools-hindsight"
+name = "llama-index-memory-hindsight"
 version = "0.1.0"
-description = "LlamaIndex tools integration for Hindsight - persistent memory for AI agents"
+description = "LlamaIndex memory integration for Hindsight - automatic long-term memory for AI agents"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -34,7 +34,7 @@ dependencies = [
 
 [project.urls]
 Homepage = "https://github.com/vectorize-io/hindsight"
-Documentation = "https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/llamaindex"
+Documentation = "https://github.com/vectorize-io/hindsight/tree/main/hindsight-integrations/llamaindex-memory"
 Repository = "https://github.com/vectorize-io/hindsight"
 
 [build-system]

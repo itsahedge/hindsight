@@ -4,36 +4,93 @@ sidebar_position: 8
 
 # LlamaIndex
 
-Persistent long-term memory for [LlamaIndex](https://docs.llamaindex.ai/) agents via Hindsight. Uses LlamaIndex's native `BaseToolSpec` pattern to expose retain, recall, and reflect as tools that any LlamaIndex agent can use.
+Persistent long-term memory for [LlamaIndex](https://docs.llamaindex.ai/) agents via Hindsight. Two packages are available:
 
-:::note Standalone Package
-This is a standalone package (`hindsight-llamaindex`) — not a LlamaHub namespace package. Import as `from hindsight_llamaindex import ...`, not from `llama_index.tools`.
-:::
+- **`llama-index-tools-hindsight`** — Agent-driven memory tools (retain/recall/reflect)
+- **`llama-index-memory-hindsight`** — Automatic memory via LlamaIndex's `BaseMemory` interface
 
-## Features
-
-- **Native BaseToolSpec** — Implements `BaseToolSpec` so tools work with any LlamaIndex agent (ReAct, FunctionCalling, etc.)
-- **Three Memory Operations** — retain (store), recall (search), and reflect (synthesize) as individual tools
-- **Selective Tools** — Use `to_tool_list(spec_functions=...)` or `include_retain/recall/reflect` flags to expose only the tools you need
-- **Global + Per-Call Config** — Set defaults via `configure()`, override per-call
-- **Bank Mission Management** — Automatically create banks with missions for fact extraction context
-- **Graceful Error Handling** — Errors are logged and returned as friendly messages; agents continue functioning
-- **Full Hindsight Feature Set** — Tags, metadata, document grouping, fact type filtering, entity extraction, reflect schemas
+Both follow the LlamaIndex namespace package convention (`from llama_index.tools.hindsight import ...`).
 
 ## Installation
 
 ```bash
-pip install hindsight-llamaindex
+# Tools only (agent-driven)
+pip install llama-index-tools-hindsight
+
+# Memory only (automatic)
+pip install llama-index-memory-hindsight
+
+# Both
+pip install llama-index-tools-hindsight llama-index-memory-hindsight
 ```
 
-## Quick Start: Tool Spec
+---
 
-Use `HindsightToolSpec` directly for full control.
+## Automatic Memory (BaseMemory)
+
+The simplest way to add Hindsight memory to a LlamaIndex agent. Messages are automatically stored on each turn, and relevant memories are recalled and injected as context.
 
 ```python
 import asyncio
 from hindsight_client import Hindsight
-from hindsight_llamaindex import HindsightToolSpec
+from llama_index.memory.hindsight import HindsightMemory
+from llama_index.core.agent import ReActAgent
+from llama_index.llms.openai import OpenAI
+
+async def main():
+    client = Hindsight(base_url="http://localhost:8888")
+
+    memory = HindsightMemory.from_client(
+        client=client,
+        bank_id="user-123",
+        mission="Track user preferences and project context",
+    )
+
+    agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"), memory=memory)
+    response = await agent.run("Remember that I prefer dark mode")
+    print(response)
+
+asyncio.run(main())
+```
+
+### How It Works
+
+| Event | What Happens |
+|-------|-------------|
+| Agent receives input | `get(input)` recalls relevant memories from Hindsight, prepends as system message |
+| Agent produces output | `put(message)` retains the message to Hindsight for future recall |
+| New session starts | Previous memories are available via recall; local chat buffer starts empty |
+
+### `HindsightMemory.from_client()`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `client` | `Hindsight` | *required* | Hindsight client instance |
+| `bank_id` | `str` | *required* | Memory bank ID |
+| `mission` | `str` | `None` | Bank mission — auto-creates bank on first use |
+| `context` | `str` | `"llamaindex"` | Source label for retain operations |
+| `budget` | `str` | `"mid"` | Recall budget level |
+| `max_tokens` | `int` | `4096` | Max recall tokens |
+| `tags` | `list[str]` | `None` | Tags for retain operations |
+| `recall_tags` | `list[str]` | `None` | Tags to filter recall |
+| `recall_tags_match` | `str` | `"any"` | Tag matching mode |
+| `system_prompt` | `str` | *(built-in)* | Template for memory system message. Must contain `{memories}` |
+| `chat_history_limit` | `int` | `100` | Max messages in local buffer |
+
+Also available: `HindsightMemory.from_url(hindsight_api_url, bank_id, ...)` for creating without a pre-built client.
+
+---
+
+## Agent-Driven Tools (BaseToolSpec)
+
+For explicit control, expose retain/recall/reflect as tools the agent can choose to call.
+
+### Quick Start: Tool Spec
+
+```python
+import asyncio
+from hindsight_client import Hindsight
+from llama_index.tools.hindsight import HindsightToolSpec
 from llama_index.llms.openai import OpenAI
 from llama_index.core.agent import ReActAgent
 
@@ -43,7 +100,7 @@ async def main():
     spec = HindsightToolSpec(
         client=client,
         bank_id="user-123",
-        mission="Track user preferences and project context",
+        mission="Track user preferences",
     )
     tools = spec.to_tool_list()
 
@@ -54,89 +111,53 @@ async def main():
 asyncio.run(main())
 ```
 
-:::tip Jupyter Notebooks
-In notebooks, use top-level `await` directly — no `asyncio.run()` needed:
-```python
-response = await agent.run("Remember that I prefer dark mode")
-```
-:::
-
-## Quick Start: Factory Function
-
-Use `create_hindsight_tools()` for a simpler API.
+### Quick Start: Factory Function
 
 ```python
-import asyncio
-from hindsight_client import Hindsight
-from hindsight_llamaindex import create_hindsight_tools
-from llama_index.llms.openai import OpenAI
-from llama_index.core.agent import ReActAgent
+from llama_index.tools.hindsight import create_hindsight_tools
 
-async def main():
-    client = Hindsight(base_url="http://localhost:8888")
-    tools = create_hindsight_tools(
-        client=client,
-        bank_id="user-123",
-        mission="Track user preferences",
-    )
-
-    agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o"))
-    response = await agent.run("What do you remember about me?")
-    print(response)
-
-asyncio.run(main())
+tools = create_hindsight_tools(
+    client=client,
+    bank_id="user-123",
+    mission="Track user preferences",
+)
 ```
 
-## Selecting Tools
-
-### Via `to_tool_list()`
+### Selecting Tools
 
 ```python
-spec = HindsightToolSpec(client=client, bank_id="user-123")
-
-# Only recall and reflect — no retain
+# Via to_tool_list()
 tools = spec.to_tool_list(spec_functions=["recall_memory", "reflect_on_memory"])
-```
 
-### Via factory flags
-
-```python
+# Via factory flags
 tools = create_hindsight_tools(
     client=client,
     bank_id="user-123",
     include_retain=True,
     include_recall=True,
-    include_reflect=False,  # exclude reflect
+    include_reflect=False,
 )
 ```
 
-## Configuration
+### Configuration
 
-### Global config
-
-Set connection and default parameters once. All subsequent tool creation will use these unless overridden.
+Set defaults via `configure()`, override per-call:
 
 ```python
-from hindsight_llamaindex import configure
+from llama_index.tools.hindsight import configure
 
 configure(
     hindsight_api_url="http://localhost:8888",
     api_key="your-api-key",  # or set HINDSIGHT_API_KEY env var
     budget="mid",
     tags=["source:llamaindex"],
-    context="my-app",  # source label for retain operations
+    context="my-app",
     mission="Track user preferences",
 )
 
-# Now you can create tools without passing client/url
+# Now create tools without passing client/url
 tools = create_hindsight_tools(bank_id="user-123")
 ```
-
-### Per-call overrides
-
-Pass parameters directly to `HindsightToolSpec()` or `create_hindsight_tools()` to override global config.
-
-## API Reference
 
 ### `HindsightToolSpec()`
 
@@ -154,7 +175,6 @@ Pass parameters directly to `HindsightToolSpec()` or `create_hindsight_tools()` 
 | `retain_metadata` | `dict[str, str]` | `None` | Default metadata for retain operations |
 | `retain_document_id` | `str` | `None` | Document ID for retain. Auto-generates `{session}-{timestamp}` if not set |
 | `retain_context` | `str` | `"llamaindex"` | Source label for retain operations |
-| `retain_async` | `bool` | `True` | Use async processing for non-blocking retain |
 | `recall_types` | `list[str]` | `None` | Fact types: `world`, `experience`, `opinion`, `observation` |
 | `recall_include_entities` | `bool` | `False` | Include entity info in recall results |
 | `reflect_context` | `str` | `None` | Additional context for reflect |
@@ -162,38 +182,35 @@ Pass parameters directly to `HindsightToolSpec()` or `create_hindsight_tools()` 
 | `reflect_response_schema` | `dict` | `None` | JSON schema to constrain reflect output |
 | `reflect_tags` | `list[str]` | `None` | Tags for reflect (defaults to `recall_tags`) |
 | `reflect_tags_match` | `str` | `None` | Tag matching for reflect (defaults to `recall_tags_match`) |
-| `mission` | `str` | `None` | Bank mission — auto-creates bank with this mission on first use |
+| `mission` | `str` | `None` | Bank mission — auto-creates bank on first use |
 
-### `create_hindsight_tools()`
-
-Accepts all `HindsightToolSpec` parameters plus:
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `include_retain` | `bool` | `True` | Include the retain (store) tool |
-| `include_recall` | `bool` | `True` | Include the recall (search) tool |
-| `include_reflect` | `bool` | `True` | Include the reflect (synthesize) tool |
-
-### `configure()`
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `hindsight_api_url` | `str` | Production URL | Hindsight API URL |
-| `api_key` | `str` | `None` | API key (falls back to `HINDSIGHT_API_KEY` env var) |
-| `budget` | `str` | `"mid"` | Default recall budget |
-| `max_tokens` | `int` | `4096` | Default max tokens |
-| `tags` | `list[str]` | `None` | Default retain tags |
-| `recall_tags` | `list[str]` | `None` | Default recall filter tags |
-| `recall_tags_match` | `str` | `"any"` | Default tag matching mode |
-| `context` | `str` | `"llamaindex"` | Source label for retain operations |
-| `mission` | `str` | `None` | Default bank mission |
-| `verbose` | `bool` | `False` | Enable verbose logging |
+---
 
 ## Production Patterns
 
-### Memory Scoping with Tags
+### Bank Mission
 
-Use tags to organize memories by source, conversation, or topic:
+Set a mission to give the memory engine context for fact extraction:
+
+```python
+# Tools
+spec = HindsightToolSpec(
+    client=client,
+    bank_id="user-123",
+    mission="Track user coding preferences, project context, and technical decisions",
+)
+
+# Memory
+memory = HindsightMemory.from_client(
+    client=client,
+    bank_id="user-123",
+    mission="Track user coding preferences, project context, and technical decisions",
+)
+```
+
+The bank is created automatically on first use. If it already exists, creation is silently skipped.
+
+### Memory Scoping with Tags
 
 ```python
 spec = HindsightToolSpec(
@@ -201,47 +218,35 @@ spec = HindsightToolSpec(
     bank_id="user-123",
     tags=["source:chat", "session:abc"],        # applied to all retains
     recall_tags=["source:chat"],                 # filter recalls to chat memories
-    recall_tags_match="any",                     # match any tag (default)
+    recall_tags_match="any",
 )
 ```
-
-For multi-tenant applications, use one bank per user and tags per context (e.g., `project:X`, `channel:support`).
-
-### Bank Mission
-
-Set a mission to give the memory engine context for fact extraction:
-
-```python
-spec = HindsightToolSpec(
-    client=client,
-    bank_id="user-123",
-    mission="Track user coding preferences, project context, and technical decisions",
-)
-```
-
-The bank is created/updated automatically on first use. If the bank already exists, the creation is silently skipped.
 
 ### Error Handling
 
-Tool methods handle errors gracefully — they log the error and return a friendly message instead of raising exceptions. This means the agent continues functioning even if memory operations fail:
+Both packages handle errors gracefully — operations are logged and return friendly messages instead of raising exceptions. Agents continue functioning even if memory is unavailable.
+
+### Combining Tools + Memory
+
+Use both packages together for maximum flexibility:
 
 ```python
-# If Hindsight is unavailable, the agent gets a message like:
-# "Failed to search memory: connection refused"
-# instead of an unhandled exception
-response = await agent.run("What do you know about me?")
-```
+from llama_index.tools.hindsight import create_hindsight_tools
+from llama_index.memory.hindsight import HindsightMemory
 
-### Bank Lifecycle
+# Automatic memory for context enrichment
+memory = HindsightMemory.from_client(client=client, bank_id="user-123")
 
-With `mission`, banks are created automatically. Without it, create banks before use:
+# Explicit tools for agent-driven reflect
+tools = create_hindsight_tools(
+    client=client,
+    bank_id="user-123",
+    include_retain=False,   # memory handles retain automatically
+    include_recall=False,   # memory handles recall automatically
+    include_reflect=True,   # agent can still explicitly reflect
+)
 
-```python
-# One-time setup (e.g., during user onboarding)
-await client.acreate_bank(f"user-{user_id}", name=f"{user_name}'s Memory")
-
-# Subsequent agent creation — bank already exists
-spec = HindsightToolSpec(client=client, bank_id=f"user-{user_id}")
+agent = ReActAgent(tools=tools, llm=llm, memory=memory)
 ```
 
 ## Requirements

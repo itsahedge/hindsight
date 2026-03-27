@@ -38,7 +38,6 @@ class HindsightToolSpec(BaseToolSpec):
         retain_document_id: Default document_id for retain. If None,
             auto-generates ``{session_id}-{timestamp_ms}`` per call.
         retain_context: Source label for retain operations (default: "llamaindex").
-        retain_async: If True, retain calls use async processing (non-blocking).
         recall_types: Fact types to filter (world, experience, opinion, observation).
         recall_include_entities: Include entity information in recall results.
         reflect_context: Additional context for reflect operations.
@@ -52,7 +51,7 @@ class HindsightToolSpec(BaseToolSpec):
     Example::
 
         from hindsight_client import Hindsight
-        from hindsight_llamaindex import HindsightToolSpec
+        from llama_index.tools.hindsight import HindsightToolSpec
 
         client = Hindsight(base_url="http://localhost:8888")
         spec = HindsightToolSpec(client=client, bank_id="user-123")
@@ -86,7 +85,6 @@ class HindsightToolSpec(BaseToolSpec):
         retain_metadata: Optional[dict[str, str]] = None,
         retain_document_id: Optional[str] = None,
         retain_context: Optional[str] = None,
-        retain_async: bool = True,
         # Recall options
         recall_types: Optional[list[str]] = None,
         recall_include_entities: bool = False,
@@ -135,7 +133,6 @@ class HindsightToolSpec(BaseToolSpec):
             if retain_context is not None
             else (config.context if config else "llamaindex")
         )
-        self._retain_async = retain_async
 
         # Recall-specific
         self._recall_types = recall_types
@@ -202,8 +199,6 @@ class HindsightToolSpec(BaseToolSpec):
             kwargs["metadata"] = self._retain_metadata
         # Use explicit document_id if set, otherwise auto-generate
         kwargs["document_id"] = self._retain_document_id or self._generate_document_id()
-        if self._retain_async:
-            kwargs["async_processing"] = True
         return kwargs
 
     def _recall_kwargs(self, query: str) -> dict[str, Any]:
@@ -377,7 +372,6 @@ def create_hindsight_tools(
     retain_metadata: Optional[dict[str, str]] = None,
     retain_document_id: Optional[str] = None,
     retain_context: Optional[str] = None,
-    retain_async: bool = True,
     # Recall options
     recall_types: Optional[list[str]] = None,
     recall_include_entities: bool = False,
@@ -413,7 +407,6 @@ def create_hindsight_tools(
         retain_document_id: Default document_id for retain. If None,
             auto-generates per call.
         retain_context: Source label for retain operations.
-        retain_async: If True, retain uses async processing (non-blocking).
         recall_types: Fact types to filter (world, experience, opinion, observation).
         recall_include_entities: Include entity information in recall results.
         reflect_context: Additional context for reflect operations.
@@ -445,7 +438,6 @@ def create_hindsight_tools(
         retain_metadata=retain_metadata,
         retain_document_id=retain_document_id,
         retain_context=retain_context,
-        retain_async=retain_async,
         recall_types=recall_types,
         recall_include_entities=recall_include_entities,
         reflect_context=reflect_context,
