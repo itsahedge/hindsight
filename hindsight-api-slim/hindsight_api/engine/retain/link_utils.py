@@ -731,6 +731,7 @@ async def compute_semantic_links_ann(
     bank_id: str,
     unit_ids: list[str],
     embeddings: list[list[float]],
+    fact_types: list[str] | None = None,
     top_k: int = 50,
     threshold: float = 0.7,
     log_buffer: list[str] = None,
@@ -742,11 +743,17 @@ async def compute_semantic_links_ann(
     holding locks during expensive HNSW index probes. Uses a temp table +
     LATERAL join to batch all probes in a single query.
 
+    Queries are split by fact_type so PostgreSQL uses the per-bank partial
+    HNSW indexes (idx_mu_emb_worl_*, idx_mu_emb_expr_*). Without the
+    fact_type filter, the planner falls back to sequential scan (~50x slower).
+
     Args:
         conn: Database connection (separate from write transaction, autocommit)
         bank_id: Bank identifier
         unit_ids: Placeholder unit IDs (real IDs not yet created)
         embeddings: Embedding vectors for each unit
+        fact_types: Per-unit fact types (same length as unit_ids). Used to
+            query only the matching HNSW index per seed.
         top_k: Max neighbors per unit
         threshold: Minimum cosine similarity
         log_buffer: Optional logging buffer
@@ -772,56 +779,81 @@ async def compute_semantic_links_ann(
     except ValueError:
         pass  # Placeholder IDs like "0", "1" — no need to exclude
 
-    # Create temp table for seed embeddings
-    await conn.execute("CREATE TEMP TABLE IF NOT EXISTS _ann_seeds (unit_id text, emb_text text)")
+    # Build per-unit fact_types (default to 'world' if not provided)
+    if fact_types is None:
+        fact_types = ["world"] * len(unit_ids)
+
+    # Create temp table with fact_type so each seed only probes its own type's
+    # HNSW index. The per-bank partial indexes (idx_mu_emb_worl_*, idx_mu_emb_expr_*)
+    # require fact_type in the WHERE clause — without it the planner falls back to
+    # sequential scan + sort which is ~50x slower (90ms vs 8ms per probe).
+    await conn.execute(
+        "CREATE TEMP TABLE IF NOT EXISTS _ann_seeds (unit_id text, emb_text text, fact_type text)"
+    )
     await conn.execute("TRUNCATE _ann_seeds")
 
-    records = [(uid, str(list(emb) if not isinstance(emb, list) else emb)) for uid, emb in zip(unit_ids, embeddings)]
-    await conn.copy_records_to_table("_ann_seeds", records=records, columns=["unit_id", "emb_text"])
+    records = [
+        (uid, str(list(emb) if not isinstance(emb, list) else emb), ft)
+        for uid, emb, ft in zip(unit_ids, embeddings, fact_types)
+    ]
+    await conn.copy_records_to_table(
+        "_ann_seeds", records=records, columns=["unit_id", "emb_text", "fact_type"]
+    )
 
-    if exclude_uuids:
-        rows = await conn.fetch(
-            f"""
-            SELECT s.unit_id       AS from_id,
-                   n.id::text      AS to_id,
-                   n.similarity
-            FROM _ann_seeds s
-            CROSS JOIN LATERAL (
-                SELECT mu.id,
-                       1 - (mu.embedding <=> s.emb_text::vector) AS similarity
-                FROM {fq_table("memory_units")} mu
-                WHERE mu.bank_id = $1
-                  AND mu.embedding IS NOT NULL
-                  AND mu.id != ALL($2::uuid[])
-                ORDER BY mu.embedding <=> s.emb_text::vector
-                LIMIT $3
-            ) n
-            """,
-            bank_id,
-            exclude_uuids,
-            top_k,
-        )
-    else:
-        # Phase 1 with placeholder IDs — facts not inserted yet, nothing to exclude
-        rows = await conn.fetch(
-            f"""
-            SELECT s.unit_id       AS from_id,
-                   n.id::text      AS to_id,
-                   n.similarity
-            FROM _ann_seeds s
-            CROSS JOIN LATERAL (
-                SELECT mu.id,
-                       1 - (mu.embedding <=> s.emb_text::vector) AS similarity
-                FROM {fq_table("memory_units")} mu
-                WHERE mu.bank_id = $1
-                  AND mu.embedding IS NOT NULL
-                ORDER BY mu.embedding <=> s.emb_text::vector
-                LIMIT $2
-            ) n
-            """,
-            bank_id,
-            top_k,
-        )
+    # Run one ANN query per fact_type so each uses the right HNSW index.
+    # Each seed only finds neighbors of its own fact_type.
+    rows = []
+    active_types = set(fact_types)
+    for fact_type in active_types:
+        if exclude_uuids:
+            ft_rows = await conn.fetch(
+                f"""
+                SELECT s.unit_id       AS from_id,
+                       n.id::text      AS to_id,
+                       n.similarity
+                FROM _ann_seeds s
+                CROSS JOIN LATERAL (
+                    SELECT mu.id,
+                           1 - (mu.embedding <=> s.emb_text::vector) AS similarity
+                    FROM {fq_table("memory_units")} mu
+                    WHERE mu.bank_id = $1
+                      AND mu.fact_type = $2
+                      AND mu.embedding IS NOT NULL
+                      AND mu.id != ALL($3::uuid[])
+                    ORDER BY mu.embedding <=> s.emb_text::vector
+                    LIMIT $4
+                ) n
+                WHERE s.fact_type = $2
+                """,
+                bank_id,
+                fact_type,
+                exclude_uuids,
+                top_k,
+            )
+        else:
+            ft_rows = await conn.fetch(
+                f"""
+                SELECT s.unit_id       AS from_id,
+                       n.id::text      AS to_id,
+                       n.similarity
+                FROM _ann_seeds s
+                CROSS JOIN LATERAL (
+                    SELECT mu.id,
+                           1 - (mu.embedding <=> s.emb_text::vector) AS similarity
+                    FROM {fq_table("memory_units")} mu
+                    WHERE mu.bank_id = $1
+                      AND mu.fact_type = $2
+                      AND mu.embedding IS NOT NULL
+                    ORDER BY mu.embedding <=> s.emb_text::vector
+                    LIMIT $3
+                ) n
+                WHERE s.fact_type = $2
+                """,
+                bank_id,
+                fact_type,
+                top_k,
+            )
+        rows.extend(ft_rows)
 
     # Clean up temp table (no ON COMMIT DROP since we're not in a transaction)
     await conn.execute("DROP TABLE IF EXISTS _ann_seeds")

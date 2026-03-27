@@ -147,9 +147,12 @@ async def _pre_resolve_phase1(
             entity_labels=getattr(config, "entity_labels", None),
         )
 
-        # Semantic ANN search on the same connection (autocommit, no transaction)
+        # Semantic ANN search on the same connection (autocommit, no transaction).
+        # Pass fact_types so each seed only probes its own type's HNSW index.
+        fact_types = [fact.fact_type for fact in processed_facts]
         semantic_ann_links = await compute_semantic_links_ann(
-            resolve_conn, bank_id, placeholder_unit_ids, embeddings, log_buffer=log_buffer
+            resolve_conn, bank_id, placeholder_unit_ids, embeddings,
+            fact_types=fact_types, log_buffer=log_buffer
         )
 
     return resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links
