@@ -2859,3 +2859,171 @@ async def test_named_strategy_applied_end_to_end(memory, request_context):
 
     finally:
         await memory.delete_bank(bank_id, request_context=request_context)
+
+
+@pytest.mark.asyncio
+async def test_semantic_ann_uses_hnsw_index(memory, request_context):
+    """
+    Test that Phase 1 ANN semantic search creates links between similar world
+    facts across batches.  This exercises the per-fact_type partial HNSW index
+    and the placeholder-ID remap logic.
+    """
+    bank_id = f"test_sem_ann_hnsw_{datetime.now(timezone.utc).timestamp()}"
+
+    try:
+        # Batch 1: world facts about machine learning
+        unit_ids_1 = await memory.retain_async(
+            bank_id=bank_id,
+            content=(
+                "Deep learning models require large amounts of training data. "
+                "Gradient descent is the primary optimization algorithm used in neural networks."
+            ),
+            context="ML knowledge base",
+            event_date=datetime(2024, 3, 1, tzinfo=timezone.utc),
+            request_context=request_context,
+        )
+        assert len(unit_ids_1) > 0, "Batch 1 should produce facts"
+
+        # Batch 2: similar ML world facts — Phase 1 ANN should link to batch 1
+        unit_ids_2 = await memory.retain_async(
+            bank_id=bank_id,
+            content=(
+                "Neural networks learn by adjusting weights through backpropagation. "
+                "Training deep learning models requires GPUs for fast gradient computation."
+            ),
+            context="ML knowledge base",
+            event_date=datetime(2024, 3, 2, tzinfo=timezone.utc),
+            request_context=request_context,
+        )
+        assert len(unit_ids_2) > 0, "Batch 2 should produce facts"
+
+        logger.info(f"Batch 1: {len(unit_ids_1)} facts, Batch 2: {len(unit_ids_2)} facts")
+
+        # Verify cross-batch semantic links exist
+        async with memory._pool.acquire() as conn:
+            cross_links = await conn.fetch(
+                """
+                SELECT from_unit_id, to_unit_id, weight
+                FROM memory_links
+                WHERE from_unit_id::text = ANY($1)
+                  AND link_type = 'semantic'
+                  AND to_unit_id::text = ANY($2)
+                """,
+                unit_ids_2,
+                unit_ids_1,
+            )
+
+            logger.info(f"Cross-batch semantic links (batch2 -> batch1): {len(cross_links)}")
+            for link in cross_links:
+                logger.info(
+                    f"  {str(link['from_unit_id'])[:8]}... -> "
+                    f"{str(link['to_unit_id'])[:8]}... (weight: {link['weight']:.3f})"
+                )
+
+            assert len(cross_links) > 0, (
+                "Phase 1 ANN should create semantic links between similar world facts "
+                "from different batches via the HNSW index with placeholder-ID remap."
+            )
+
+            # All weights must meet the similarity threshold
+            for link in cross_links:
+                assert link["weight"] >= 0.7, (
+                    f"Semantic link weight {link['weight']:.3f} below threshold 0.7"
+                )
+
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)
+
+
+@pytest.mark.asyncio
+async def test_temporal_links_scoped_by_fact_type(memory, request_context):
+    """
+    Test that temporal links only connect facts of the SAME fact_type.
+
+    World facts should not get temporal links to experience facts even when
+    their event dates fall within the time window.
+    """
+    bank_id = f"test_temporal_scope_{datetime.now(timezone.utc).timestamp()}"
+
+    try:
+        base_date = datetime(2024, 5, 10, 12, 0, 0, tzinfo=timezone.utc)
+
+        # Store a world fact
+        world_ids = await memory.retain_async(
+            bank_id=bank_id,
+            content="Python 3.12 was released with significant performance improvements for the interpreter.",
+            context="tech news",
+            event_date=base_date,
+            fact_type_override="world",
+            request_context=request_context,
+        )
+        assert len(world_ids) > 0, "Should create world fact(s)"
+
+        # Store an experience fact at a nearby timestamp (same hour)
+        experience_ids = await memory.retain_async(
+            bank_id=bank_id,
+            content="I upgraded all my projects to Python 3.12 and benchmarked the speed improvements.",
+            context="personal log",
+            event_date=base_date + timedelta(hours=1),
+            fact_type_override="experience",
+            request_context=request_context,
+        )
+        assert len(experience_ids) > 0, "Should create experience fact(s)"
+
+        # Store another world fact at a nearby timestamp so we can confirm
+        # same-type temporal links ARE created
+        world_ids_2 = await memory.retain_async(
+            bank_id=bank_id,
+            content="The Python Software Foundation announced long-term support plans for Python 3.12.",
+            context="tech news",
+            event_date=base_date + timedelta(hours=2),
+            fact_type_override="world",
+            request_context=request_context,
+        )
+        assert len(world_ids_2) > 0, "Should create second world fact(s)"
+
+        logger.info(
+            f"World1: {world_ids}, Experience: {experience_ids}, World2: {world_ids_2}"
+        )
+
+        async with memory._pool.acquire() as conn:
+            # Check that world facts DO have temporal links to each other
+            world_all = world_ids + world_ids_2
+            world_temporal = await conn.fetch(
+                """
+                SELECT from_unit_id, to_unit_id, weight
+                FROM memory_links
+                WHERE from_unit_id::text = ANY($1)
+                  AND to_unit_id::text = ANY($1)
+                  AND link_type = 'temporal'
+                """,
+                world_all,
+            )
+            logger.info(f"World-to-world temporal links: {len(world_temporal)}")
+            assert len(world_temporal) > 0, (
+                "World facts with nearby dates should have temporal links to each other"
+            )
+
+            # Check that world facts do NOT have temporal links to experience facts
+            cross_type_links = await conn.fetch(
+                """
+                SELECT from_unit_id, to_unit_id, weight
+                FROM memory_links
+                WHERE (
+                    (from_unit_id::text = ANY($1) AND to_unit_id::text = ANY($2))
+                    OR
+                    (from_unit_id::text = ANY($2) AND to_unit_id::text = ANY($1))
+                )
+                AND link_type = 'temporal'
+                """,
+                world_all,
+                experience_ids,
+            )
+            logger.info(f"Cross-type temporal links (world<->experience): {len(cross_type_links)}")
+            assert len(cross_type_links) == 0, (
+                f"Temporal links should NOT cross fact types, but found {len(cross_type_links)} "
+                f"world<->experience links"
+            )
+
+    finally:
+        await memory.delete_bank(bank_id, request_context=request_context)

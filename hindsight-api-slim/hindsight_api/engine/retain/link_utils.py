@@ -615,13 +615,13 @@ async def create_temporal_links_batch_per_fact(
         fetch_dates_start = time_mod.time()
         rows = await conn.fetch(
             f"""
-            SELECT id, event_date
+            SELECT id, event_date, fact_type
             FROM {fq_table("memory_units")}
             WHERE id::text = ANY($1)
             """,
             unit_ids,
         )
-        new_units = {str(row["id"]): row["event_date"] for row in rows}
+        new_units = {str(row["id"]): (row["event_date"], row["fact_type"]) for row in rows}
         _log(
             log_buffer,
             f"      [7.1] Fetch event_dates for {len(unit_ids)} units: {time_mod.time() - fetch_dates_start:.3f}s",
@@ -631,8 +631,8 @@ async def create_temporal_links_batch_per_fact(
         # avoiding transfer of the entire time-window result set (could be 50k+ rows).
         fetch_neighbors_start = time_mod.time()
 
-        # Build arrays of new unit IDs and their event dates for the LATERAL query
-        new_unit_entries = [(uid, edate) for uid, edate in new_units.items() if edate is not None]
+        # Build arrays of new unit IDs, event dates, and fact types for the LATERAL query
+        new_unit_entries = [(uid, edate, ftype) for uid, (edate, ftype) in new_units.items() if edate is not None]
         if new_unit_entries:
             import uuid as uuid_mod
 
@@ -640,27 +640,31 @@ async def create_temporal_links_batch_per_fact(
                 uuid_mod.UUID(uid) if isinstance(uid, str) else uid for uid in [e[0] for e in new_unit_entries]
             ]
             lateral_event_dates = [_normalize_datetime(e[1]) for e in new_unit_entries]
+            lateral_fact_types = [e[2] for e in new_unit_entries]
             exclude_uuids = [uuid_mod.UUID(uid) if isinstance(uid, str) else uid for uid in unit_ids]
 
             rows = await conn.fetch(
                 f"""
                 SELECT src.unit_id::text AS from_id, n.id, n.event_date,
                        ABS(EXTRACT(EPOCH FROM n.event_date - src.event_date)) / 3600.0 AS time_diff_hours
-                FROM unnest($1::uuid[], $2::timestamptz[]) AS src(unit_id, event_date)
+                FROM unnest($1::uuid[], $2::timestamptz[], $3::text[])
+                     AS src(unit_id, event_date, fact_type)
                 CROSS JOIN LATERAL (
                     SELECT mu.id, mu.event_date
                     FROM {fq_table("memory_units")} mu
-                    WHERE mu.bank_id = $3
-                      AND mu.event_date BETWEEN src.event_date - make_interval(hours => $5)
-                                             AND src.event_date + make_interval(hours => $5)
+                    WHERE mu.bank_id = $4
+                      AND mu.fact_type = src.fact_type
+                      AND mu.event_date BETWEEN src.event_date - make_interval(hours => $6)
+                                             AND src.event_date + make_interval(hours => $6)
                       AND mu.id != src.unit_id
-                      AND mu.id != ALL($4::uuid[])
+                      AND mu.id != ALL($5::uuid[])
                     ORDER BY ABS(EXTRACT(EPOCH FROM mu.event_date - src.event_date))
                     LIMIT {MAX_TEMPORAL_LINKS_PER_UNIT}
                 ) n
                 """,
                 lateral_unit_ids,
                 lateral_event_dates,
+                lateral_fact_types,
                 bank_id,
                 exclude_uuids,
                 time_window_hours,
@@ -685,16 +689,18 @@ async def create_temporal_links_batch_per_fact(
         if len(new_units) > 1:
             # Convert new_units dict to candidate format for within-batch linking
             new_unit_items = list(new_units.items())
-            for i, (unit_id, event_date) in enumerate(new_unit_items):
+            for i, (unit_id, (event_date, fact_type)) in enumerate(new_unit_items):
                 if event_date is None:
                     continue  # Skip units without event_date for temporal linking
                 unit_event_date_norm = _normalize_datetime(event_date)
 
                 # Compare with other new units (only those after this one to avoid duplicates)
                 for j in range(i + 1, len(new_unit_items)):
-                    other_id, other_event_date = new_unit_items[j]
+                    other_id, (other_event_date, other_fact_type) = new_unit_items[j]
                     if other_event_date is None:
                         continue  # Skip units without event_date
+                    if fact_type != other_fact_type:
+                        continue  # Only link facts of the same type
                     other_event_date_norm = _normalize_datetime(other_event_date)
 
                     # Check if within time window
@@ -787,18 +793,14 @@ async def compute_semantic_links_ann(
     # HNSW index. The per-bank partial indexes (idx_mu_emb_worl_*, idx_mu_emb_expr_*)
     # require fact_type in the WHERE clause — without it the planner falls back to
     # sequential scan + sort which is ~50x slower (90ms vs 8ms per probe).
-    await conn.execute(
-        "CREATE TEMP TABLE IF NOT EXISTS _ann_seeds (unit_id text, emb_text text, fact_type text)"
-    )
+    await conn.execute("CREATE TEMP TABLE IF NOT EXISTS _ann_seeds (unit_id text, emb_text text, fact_type text)")
     await conn.execute("TRUNCATE _ann_seeds")
 
     records = [
         (uid, str(list(emb) if not isinstance(emb, list) else emb), ft)
         for uid, emb, ft in zip(unit_ids, embeddings, fact_types)
     ]
-    await conn.copy_records_to_table(
-        "_ann_seeds", records=records, columns=["unit_id", "emb_text", "fact_type"]
-    )
+    await conn.copy_records_to_table("_ann_seeds", records=records, columns=["unit_id", "emb_text", "fact_type"])
 
     # Run one ANN query per fact_type so each uses the right HNSW index.
     # Each seed only finds neighbors of its own fact_type.
