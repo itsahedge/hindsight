@@ -11,6 +11,7 @@ import sys
 DEFAULTS = {
     # Recall
     "autoRecall": True,
+    "recallMode": "recall",  # "recall" (raw facts list) or "reflect" (synthesized answer)
     "recallBudget": "mid",
     "recallMaxTokens": 1024,
     "recallTypes": ["world", "experience"],
@@ -64,6 +65,7 @@ ENV_OVERRIDES = {
     "HINDSIGHT_AUTO_RECALL": ("autoRecall", bool),
     "HINDSIGHT_AUTO_RETAIN": ("autoRetain", bool),
     "HINDSIGHT_RETAIN_MODE": ("retainMode", str),
+    "HINDSIGHT_RECALL_MODE": ("recallMode", str),
     "HINDSIGHT_RECALL_BUDGET": ("recallBudget", str),
     "HINDSIGHT_RECALL_MAX_TOKENS": ("recallMaxTokens", int),
     "HINDSIGHT_RECALL_MAX_QUERY_CHARS": ("recallMaxQueryChars", int),

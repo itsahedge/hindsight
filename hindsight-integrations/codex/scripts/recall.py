@@ -98,49 +98,90 @@ def main():
     if len(query) > recall_max_query_chars:
         query = query[:recall_max_query_chars]
 
-    debug_log(config, f"Recalling from bank '{bank_id}', query length: {len(query)}")
-
-    try:
-        response = client.recall(
-            bank_id=bank_id,
-            query=query,
-            max_tokens=config.get("recallMaxTokens", 1024),
-            budget=config.get("recallBudget", "mid"),
-            types=config.get("recallTypes"),
-            timeout=10,
-        )
-    except Exception as e:
-        print(f"[Hindsight] Recall failed: {e}", file=sys.stderr)
-        return
-
-    results = response.get("results", [])
-    if not results:
-        debug_log(config, "No memories found")
-        return
-
-    debug_log(config, f"Injecting {len(results)} memories")
-
-    memories_formatted = format_memories(results)
-    preamble = config.get("recallPromptPreamble", "")
+    recall_mode = config.get("recallMode", "recall")
     current_time = format_current_time()
+    preamble = config.get("recallPromptPreamble", "")
 
-    context_message = (
-        f"<hindsight_memories>\n"
-        f"{preamble}\n"
-        f"Current time - {current_time}\n\n"
-        f"{memories_formatted}\n"
-        f"</hindsight_memories>"
-    )
+    if recall_mode == "reflect":
+        debug_log(config, f"Reflecting from bank '{bank_id}', query length: {len(query)}")
+        try:
+            response = client.reflect(
+                bank_id=bank_id,
+                query=query,
+                budget=config.get("recallBudget", "mid"),
+                max_tokens=config.get("recallMaxTokens", 1024),
+                timeout=25,
+            )
+        except Exception as e:
+            print(f"[Hindsight] Reflect failed: {e}", file=sys.stderr)
+            return
 
-    write_state(
-        LAST_RECALL_STATE,
-        {
-            "context": context_message,
-            "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            "bank_id": bank_id,
-            "result_count": len(results),
-        },
-    )
+        answer = response.get("text", "").strip()
+        if not answer:
+            debug_log(config, "Reflect returned no answer")
+            return
+
+        debug_log(config, f"Reflect response: {answer[:100]}...")
+
+        context_message = (
+            f"<hindsight_memories>\n"
+            f"{preamble}\n"
+            f"Current time - {current_time}\n\n"
+            f"{answer}\n"
+            f"</hindsight_memories>"
+        )
+
+        write_state(
+            LAST_RECALL_STATE,
+            {
+                "context": context_message,
+                "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "bank_id": bank_id,
+                "result_count": 1,
+            },
+        )
+
+    else:
+        debug_log(config, f"Recalling from bank '{bank_id}', query length: {len(query)}")
+        try:
+            response = client.recall(
+                bank_id=bank_id,
+                query=query,
+                max_tokens=config.get("recallMaxTokens", 1024),
+                budget=config.get("recallBudget", "mid"),
+                types=config.get("recallTypes"),
+                timeout=10,
+            )
+        except Exception as e:
+            print(f"[Hindsight] Recall failed: {e}", file=sys.stderr)
+            return
+
+        results = response.get("results", [])
+        if not results:
+            debug_log(config, "No memories found")
+            return
+
+        debug_log(config, f"Injecting {len(results)} memories")
+
+        memories_formatted = format_memories(results)
+
+        context_message = (
+            f"<hindsight_memories>\n"
+            f"{preamble}\n"
+            f"Current time - {current_time}\n\n"
+            f"{memories_formatted}\n"
+            f"</hindsight_memories>"
+        )
+
+        write_state(
+            LAST_RECALL_STATE,
+            {
+                "context": context_message,
+                "saved_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "bank_id": bank_id,
+                "result_count": len(results),
+            },
+        )
 
     # Output JSON for Codex hook system
     output = {
