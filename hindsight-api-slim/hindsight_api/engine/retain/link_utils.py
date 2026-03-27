@@ -726,6 +726,141 @@ async def create_temporal_links_batch_per_fact(
         raise
 
 
+async def compute_semantic_links_ann(
+    conn,
+    bank_id: str,
+    unit_ids: list[str],
+    embeddings: list[list[float]],
+    top_k: int = 50,
+    threshold: float = 0.7,
+    log_buffer: list[str] = None,
+) -> list[tuple]:
+    """
+    Phase 1: ANN search for semantic neighbors among existing units.
+
+    Runs on a separate connection OUTSIDE the write transaction to avoid
+    holding locks during expensive HNSW index probes. Uses a temp table +
+    LATERAL join to batch all probes in a single query.
+
+    Args:
+        conn: Database connection (separate from write transaction, autocommit)
+        bank_id: Bank identifier
+        unit_ids: Placeholder unit IDs (real IDs not yet created)
+        embeddings: Embedding vectors for each unit
+        top_k: Max neighbors per unit
+        threshold: Minimum cosine similarity
+        log_buffer: Optional logging buffer
+
+    Returns:
+        List of (from_id, to_id, "semantic", similarity, None) tuples
+        where from_id uses placeholder IDs.
+    """
+    if not unit_ids or not embeddings:
+        return []
+
+    import time as time_mod
+    import uuid as uuid_mod
+
+    ann_start = time_mod.time()
+    links = []
+
+    exclude_uuids = [uuid_mod.UUID(uid) if isinstance(uid, str) else uid for uid in unit_ids]
+
+    # Create temp table for seed embeddings
+    await conn.execute("CREATE TEMP TABLE IF NOT EXISTS _ann_seeds (unit_id text, emb_text text)")
+    await conn.execute("TRUNCATE _ann_seeds")
+
+    records = [
+        (uid, str(list(emb) if not isinstance(emb, list) else emb)) for uid, emb in zip(unit_ids, embeddings)
+    ]
+    await conn.copy_records_to_table("_ann_seeds", records=records, columns=["unit_id", "emb_text"])
+
+    rows = await conn.fetch(
+        f"""
+        SELECT s.unit_id       AS from_id,
+               n.id::text      AS to_id,
+               n.similarity
+        FROM _ann_seeds s
+        CROSS JOIN LATERAL (
+            SELECT mu.id,
+                   1 - (mu.embedding <=> s.emb_text::vector) AS similarity
+            FROM {fq_table("memory_units")} mu
+            WHERE mu.bank_id = $1
+              AND mu.embedding IS NOT NULL
+              AND mu.id != ALL($2::uuid[])
+            ORDER BY mu.embedding <=> s.emb_text::vector
+            LIMIT $3
+        ) n
+        """,
+        bank_id,
+        exclude_uuids,
+        top_k,
+    )
+
+    # Clean up temp table (no ON COMMIT DROP since we're not in a transaction)
+    await conn.execute("DROP TABLE IF EXISTS _ann_seeds")
+
+    for row in rows:
+        sim = float(min(1.0, max(0.0, row["similarity"])))
+        if sim >= threshold:
+            links.append((row["from_id"], row["to_id"], "semantic", sim, None))
+
+    _log(
+        log_buffer,
+        f"      [8.1] ANN search (Phase 1): {len(unit_ids)} units → {len(links)} links in {time_mod.time() - ann_start:.3f}s",
+    )
+
+    return links
+
+
+def compute_semantic_links_within_batch(
+    unit_ids: list[str],
+    embeddings: list[list[float]],
+    top_k: int = 50,
+    threshold: float = 0.7,
+) -> list[tuple]:
+    """
+    Compute semantic links between units within the same batch (no DB needed).
+
+    Uses numpy dot product on embeddings already in memory — instant.
+
+    Args:
+        unit_ids: Unit IDs (real IDs from insert_facts_batch)
+        embeddings: Embedding vectors
+        top_k: Max neighbors per unit
+        threshold: Minimum cosine similarity
+
+    Returns:
+        List of (from_id, to_id, "semantic", similarity, None) tuples
+    """
+    if len(unit_ids) < 2:
+        return []
+
+    import numpy as np
+
+    links = []
+    new_embeddings_matrix = np.array(embeddings)
+
+    for i, unit_id in enumerate(unit_ids):
+        other_indices = [j for j in range(len(unit_ids)) if j != i]
+        if not other_indices:
+            continue
+
+        other_embeddings = new_embeddings_matrix[other_indices]
+        similarities = np.dot(other_embeddings, new_embeddings_matrix[i])
+
+        above_threshold = np.where(similarities >= threshold)[0]
+        if len(above_threshold) > 0:
+            sorted_local_indices = above_threshold[np.argsort(-similarities[above_threshold])][:top_k]
+            for local_idx in sorted_local_indices:
+                other_idx = other_indices[local_idx]
+                other_id = unit_ids[other_idx]
+                similarity = float(min(1.0, max(0.0, similarities[local_idx])))
+                links.append((unit_id, other_id, "semantic", similarity, None))
+
+    return links
+
+
 async def create_semantic_links_batch(
     conn,
     bank_id: str,
@@ -734,20 +869,27 @@ async def create_semantic_links_batch(
     top_k: int = 50,
     threshold: float = 0.7,
     log_buffer: list[str] = None,
+    pre_computed_ann_links: list[tuple] | None = None,
 ) -> int:
     """
-    Create semantic links for multiple units efficiently.
+    Phase 2: Create semantic links (within-batch + pre-computed ANN results).
 
-    For each unit, finds similar units and creates links.
+    Within-batch similarities are computed in Python (numpy, instant).
+    ANN results from Phase 1 are passed in via pre_computed_ann_links and
+    inserted alongside the within-batch links.
+
+    If pre_computed_ann_links is None, falls back to running ANN inline
+    (legacy path for backward compatibility).
 
     Args:
-        conn: Database connection
-        agent_id: bank IDentifier
-        unit_ids: List of unit IDs
-        embeddings: List of embedding vectors
-        top_k: Number of top similar units to link
-        threshold: Minimum similarity threshold
-        log_buffer: Optional buffer for logging
+        conn: Database connection (inside write transaction)
+        bank_id: Bank identifier
+        unit_ids: Real unit IDs (from insert_facts_batch)
+        embeddings: Embedding vectors
+        top_k: Max neighbors per unit
+        threshold: Minimum cosine similarity
+        log_buffer: Optional logging buffer
+        pre_computed_ann_links: ANN results from Phase 1 (already remapped to real IDs)
 
     Returns:
         Number of semantic links created
@@ -758,93 +900,30 @@ async def create_semantic_links_batch(
     try:
         import time as time_mod
 
-        import numpy as np
-
-        # Batch ANN search using a temp table + LATERAL join.
-        # Instead of N sequential queries (one per new unit), we load all
-        # embeddings into a temp table and run a single LATERAL query that
-        # lets pgvector use the HNSW index for each seed row.
-        ann_start = time_mod.time()
         all_links = []
 
-        import uuid as uuid_mod
-
-        exclude_uuids = [uuid_mod.UUID(uid) if isinstance(uid, str) else uid for uid in unit_ids]
-
-        # Create temp table for seed embeddings (dropped at transaction end)
-        await conn.execute("CREATE TEMP TABLE IF NOT EXISTS _ann_seeds (unit_id text, emb_text text) ON COMMIT DROP")
-        await conn.execute("TRUNCATE _ann_seeds")
-
-        # Bulk-load seed embeddings via COPY
-        records = [
-            (uid, str(list(emb) if not isinstance(emb, list) else emb)) for uid, emb in zip(unit_ids, embeddings)
-        ]
-        await conn.copy_records_to_table("_ann_seeds", records=records, columns=["unit_id", "emb_text"])
-
-        rows = await conn.fetch(
-            f"""
-            SELECT s.unit_id       AS from_id,
-                   n.id::text      AS to_id,
-                   n.similarity
-            FROM _ann_seeds s
-            CROSS JOIN LATERAL (
-                SELECT mu.id,
-                       1 - (mu.embedding <=> s.emb_text::vector) AS similarity
-                FROM {fq_table("memory_units")} mu
-                WHERE mu.bank_id = $1
-                  AND mu.embedding IS NOT NULL
-                  AND mu.id != ALL($2::uuid[])
-                ORDER BY mu.embedding <=> s.emb_text::vector
-                LIMIT $3
-            ) n
-            """,
-            bank_id,
-            exclude_uuids,
-            top_k,
-        )
-
-        for row in rows:
-            sim = float(min(1.0, max(0.0, row["similarity"])))
-            if sim >= threshold:
-                all_links.append((row["from_id"], row["to_id"], "semantic", sim, None))
-
+        # Within-batch similarities (numpy, no DB)
+        batch_start = time_mod.time()
+        within_batch_links = compute_semantic_links_within_batch(unit_ids, embeddings, top_k, threshold)
+        all_links.extend(within_batch_links)
         _log(
             log_buffer,
-            f"      [8.1] ANN search for {len(unit_ids)} new units → {len(all_links)} candidate links (batched): {time_mod.time() - ann_start:.3f}s",
+            f"      [8.1] Within-batch semantic: {len(within_batch_links)} links in {time_mod.time() - batch_start:.3f}s",
         )
 
-        # Also compute similarities WITHIN the new batch (new units to each other)
-        # Apply the same top_k limit per unit as we do for existing units
-        if len(unit_ids) > 1:
-            new_embeddings_matrix = np.array(embeddings)
-
-            for i, unit_id in enumerate(unit_ids):
-                # Compute similarities with all OTHER new units
-                other_indices = [j for j in range(len(unit_ids)) if j != i]
-                if not other_indices:
-                    continue
-
-                other_embeddings = new_embeddings_matrix[other_indices]
-                similarities = np.dot(other_embeddings, new_embeddings_matrix[i])
-
-                # Find top-k above threshold (same logic as existing units)
-                above_threshold = np.where(similarities >= threshold)[0]
-
-                if len(above_threshold) > 0:
-                    # Sort by similarity (descending) and take top-k
-                    sorted_local_indices = above_threshold[np.argsort(-similarities[above_threshold])][:top_k]
-
-                    for local_idx in sorted_local_indices:
-                        other_idx = other_indices[local_idx]
-                        other_id = unit_ids[other_idx]
-                        # Clamp to [0, 1] to handle floating point precision issues
-                        similarity = float(min(1.0, max(0.0, similarities[local_idx])))
-                        all_links.append((unit_id, other_id, "semantic", similarity, None))
-
-        _log(
-            log_buffer,
-            f"      [8.2] Within-batch similarities added {len(all_links)} total semantic links",
-        )
+        # Add pre-computed ANN links from Phase 1
+        if pre_computed_ann_links is not None:
+            all_links.extend(pre_computed_ann_links)
+            _log(
+                log_buffer,
+                f"      [8.2] Pre-computed ANN: {len(pre_computed_ann_links)} links",
+            )
+        else:
+            # Legacy fallback: run ANN inline (for backward compatibility / tests)
+            ann_links = await compute_semantic_links_ann(
+                conn, bank_id, unit_ids, embeddings, top_k, threshold, log_buffer
+            )
+            all_links.extend(ann_links)
 
         if all_links:
             insert_start = time_mod.time()

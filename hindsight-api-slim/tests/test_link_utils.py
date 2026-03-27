@@ -1,4 +1,5 @@
-"""Tests for link_utils datetime handling and temporal link computation."""
+"""Tests for link_utils datetime handling, temporal link computation, and semantic link splitting."""
+import numpy as np
 import pytest
 from datetime import datetime, timezone, timedelta
 
@@ -7,6 +8,7 @@ from hindsight_api.engine.retain.link_utils import (
     _cap_links_per_unit,
     compute_temporal_links,
     compute_temporal_query_bounds,
+    compute_semantic_links_within_batch,
     MAX_TEMPORAL_LINKS_PER_UNIT,
 )
 
@@ -302,3 +304,87 @@ class TestCapLinksPerUnit:
         links = [("from_id", "to_id", "temporal", 0.95, "entity_id")]
         result = _cap_links_per_unit(links, max_per_unit=5)
         assert result[0] == ("from_id", "to_id", "temporal", 0.95, "entity_id")
+
+
+class TestComputeSemanticLinksWithinBatch:
+    """Tests for compute_semantic_links_within_batch.
+
+    This function computes semantic links between units in the same batch
+    using numpy dot product (no DB access). It runs in Phase 2 (write
+    transaction) while the expensive ANN search against existing units runs
+    in Phase 1 on a separate connection to avoid TimeoutErrors from HNSW
+    index contention under concurrent load.
+    """
+
+    def test_empty_returns_empty(self):
+        assert compute_semantic_links_within_batch([], []) == []
+
+    def test_single_unit_returns_empty(self):
+        emb = [np.random.randn(384).tolist()]
+        assert compute_semantic_links_within_batch(["u1"], emb) == []
+
+    def test_identical_embeddings_produce_links(self):
+        """Two identical embeddings should have similarity=1.0 (above 0.7 threshold)."""
+        emb = [0.1] * 384
+        links = compute_semantic_links_within_batch(["u1", "u2"], [emb, emb])
+        assert len(links) == 2  # bidirectional: u1→u2, u2→u1
+        from_ids = {lnk[0] for lnk in links}
+        to_ids = {lnk[1] for lnk in links}
+        assert from_ids == {"u1", "u2"}
+        assert to_ids == {"u1", "u2"}
+        for lnk in links:
+            assert lnk[2] == "semantic"
+            assert lnk[3] >= 0.99  # near-1.0 similarity
+            assert lnk[4] is None  # no entity_id
+
+    def test_orthogonal_embeddings_no_links(self):
+        """Orthogonal embeddings should have similarity=0 (below 0.7 threshold)."""
+        emb1 = [1.0] + [0.0] * 383
+        emb2 = [0.0] + [1.0] + [0.0] * 382
+        links = compute_semantic_links_within_batch(["u1", "u2"], [emb1, emb2])
+        assert len(links) == 0
+
+    def test_respects_threshold(self):
+        """Links below threshold should be excluded."""
+        emb1 = np.random.randn(384).tolist()
+        # Create a slightly similar embedding (add noise)
+        emb2 = [x + np.random.randn() * 0.5 for x in emb1]
+        # Normalize both
+        norm1 = np.linalg.norm(emb1)
+        norm2 = np.linalg.norm(emb2)
+        emb1 = [x / norm1 for x in emb1]
+        emb2 = [x / norm2 for x in emb2]
+
+        links_low = compute_semantic_links_within_batch(["u1", "u2"], [emb1, emb2], threshold=0.0)
+        links_high = compute_semantic_links_within_batch(["u1", "u2"], [emb1, emb2], threshold=0.99)
+        # Low threshold should have more links than high threshold
+        assert len(links_low) >= len(links_high)
+
+    def test_top_k_limits_per_unit(self):
+        """Each unit should link to at most top_k other units."""
+        n = 10
+        # Create similar embeddings (all close to the same vector)
+        base = np.random.randn(384)
+        base = base / np.linalg.norm(base)
+        embs = [(base + np.random.randn(384) * 0.01).tolist() for _ in range(n)]
+        unit_ids = [f"u{i}" for i in range(n)]
+
+        links = compute_semantic_links_within_batch(unit_ids, embs, top_k=3, threshold=0.5)
+        # Each unit should have at most 3 outgoing links
+        from collections import Counter
+        from_counts = Counter(lnk[0] for lnk in links)
+        for count in from_counts.values():
+            assert count <= 3
+
+    def test_link_tuple_structure(self):
+        """Verify the tuple format matches what _bulk_insert_links expects."""
+        emb = [0.1] * 384
+        links = compute_semantic_links_within_batch(["u1", "u2"], [emb, emb])
+        for lnk in links:
+            assert len(lnk) == 5
+            from_id, to_id, link_type, weight, entity_id = lnk
+            assert isinstance(from_id, str)
+            assert isinstance(to_id, str)
+            assert link_type == "semantic"
+            assert 0.0 <= weight <= 1.0
+            assert entity_id is None

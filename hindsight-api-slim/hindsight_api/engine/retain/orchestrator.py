@@ -102,7 +102,7 @@ def _build_retain_params(contents_dicts, document_tags=None, doc_contents=None):
     return retain_params, merged_tags
 
 
-async def _pre_resolve_entities(
+async def _pre_resolve_phase1(
     pool,
     entity_resolver,
     bank_id: str,
@@ -110,25 +110,30 @@ async def _pre_resolve_entities(
     processed_facts: list[ProcessedFact],
     config,
     log_buffer: list[str],
-) -> tuple[list[str], list[tuple], dict[str, list[str]]]:
+) -> tuple[list[str], list[tuple], dict[str, list[str]], list[tuple]]:
     """
-    Run entity resolution on a separate connection OUTSIDE the main write transaction.
+    Phase 1: Run expensive read-heavy operations on a separate connection
+    OUTSIDE the write transaction.
 
-    This is the expensive read-heavy phase (trigram GIN scan + co-occurrence fetch +
-    scoring).  Running it outside the transaction avoids holding row locks while
-    waiting for these slow reads, which eliminates TimeoutErrors under concurrent load.
+    - Entity resolution: trigram GIN scan + co-occurrence fetch + scoring
+    - Semantic ANN: HNSW index probes to find similar existing units
+
+    Running these outside the transaction avoids holding row locks during
+    slow reads, eliminating TimeoutErrors under concurrent load.
 
     Returns:
-        Tuple of (resolved_entity_ids, entity_to_unit, unit_to_entity_ids) to
-        pass into _insert_facts_and_links.
+        Tuple of (resolved_entity_ids, entity_to_unit, unit_to_entity_ids,
+                  semantic_ann_links) where semantic_ann_links uses placeholder IDs.
     """
+    from .link_utils import compute_semantic_links_ann
+
     user_entities_per_content = {idx: content.entities for idx, content in enumerate(contents) if content.entities}
 
     # Use placeholder unit_ids for grouping during resolution.  The actual
     # unit_ids are created later by insert_facts_batch inside the transaction,
-    # but entity resolution only needs them as grouping keys to map resolved
-    # IDs back to facts.  We use fact indices as stable placeholders.
+    # but entity resolution and ANN search only need them as grouping keys.
     placeholder_unit_ids = [str(i) for i in range(len(processed_facts))]
+    embeddings = [fact.embedding for fact in processed_facts]
 
     async with acquire_with_retry(pool) as resolve_conn:
         resolved_entity_ids, entity_to_unit, unit_to_entity_ids = await entity_processing.resolve_entities(
@@ -142,21 +147,27 @@ async def _pre_resolve_entities(
             entity_labels=getattr(config, "entity_labels", None),
         )
 
-    return resolved_entity_ids, entity_to_unit, unit_to_entity_ids
+        # Semantic ANN search on the same connection (autocommit, no transaction)
+        semantic_ann_links = await compute_semantic_links_ann(
+            resolve_conn, bank_id, placeholder_unit_ids, embeddings, log_buffer=log_buffer
+        )
+
+    return resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links
 
 
-def _remap_entity_resolution(
+def _remap_phase1_results(
     resolved_entity_ids: list[str],
     entity_to_unit: list[tuple],
     unit_to_entity_ids: dict[str, list[str]],
+    semantic_ann_links: list[tuple],
     actual_unit_ids: list[str],
-) -> tuple[list[tuple], dict[str, list[str]]]:
+) -> tuple[list[tuple], dict[str, list[str]], list[tuple]]:
     """
-    Remap entity resolution results from placeholder unit IDs to actual unit IDs.
+    Remap Phase 1 results from placeholder unit IDs to actual unit IDs.
 
-    During _pre_resolve_entities we use str(fact_index) as placeholder unit IDs.
+    During Phase 1 we use str(fact_index) as placeholder unit IDs.
     After insert_facts_batch creates real UUIDs, this function replaces the
-    placeholders so that unit_entities rows reference the correct memory_units.
+    placeholders so that all rows reference the correct memory_units.
     """
     # Build placeholder -> actual mapping
     placeholder_to_actual = {str(i): actual_id for i, actual_id in enumerate(actual_unit_ids)}
@@ -173,7 +184,13 @@ def _remap_entity_resolution(
         actual_id = placeholder_to_actual.get(placeholder_id, placeholder_id)
         remapped_unit_to_entity_ids[actual_id] = entity_ids
 
-    return remapped_entity_to_unit, remapped_unit_to_entity_ids
+    # Remap semantic ANN links (from_id uses placeholder)
+    remapped_semantic = [
+        (placeholder_to_actual.get(lnk[0], lnk[0]), lnk[1], lnk[2], lnk[3], lnk[4])
+        for lnk in semantic_ann_links
+    ]
+
+    return remapped_entity_to_unit, remapped_unit_to_entity_ids, remapped_semantic
 
 
 async def _insert_facts_and_links(
@@ -189,6 +206,7 @@ async def _insert_facts_and_links(
     resolved_entity_ids: list[str] | None = None,
     entity_to_unit: list[tuple] | None = None,
     unit_to_entity_ids: dict[str, list[str]] | None = None,
+    semantic_ann_links: list[tuple] | None = None,
 ) -> tuple[list[list[str]], list]:
     """
     Phase 2 of the retain pipeline: insert facts and retrieval-critical links.
@@ -216,9 +234,12 @@ async def _insert_facts_and_links(
             # Fast path: entity resolution was done in Phase 1 (separate connection).
             # Remap placeholder IDs to actual unit IDs.
             step_start = time.time()
-            remapped_entity_to_unit, remapped_unit_to_entity_ids = _remap_entity_resolution(
-                resolved_entity_ids, entity_to_unit, unit_to_entity_ids, unit_ids
+            remapped_entity_to_unit, remapped_unit_to_entity_ids, remapped_semantic = _remap_phase1_results(
+                resolved_entity_ids, entity_to_unit, unit_to_entity_ids,
+                semantic_ann_links or [], unit_ids
             )
+            # Update semantic_ann_links with remapped IDs for Phase 2
+            semantic_ann_links = remapped_semantic
             # INSERT unit_entities (FK to memory_units, must be in transaction)
             unit_entity_pairs = [
                 (unit_id, resolved_entity_ids[idx])
@@ -260,11 +281,12 @@ async def _insert_facts_and_links(
         temporal_link_count = await link_creation.create_temporal_links_batch(conn, bank_id, unit_ids)
         log_buffer.append(f"  Temporal links: {temporal_link_count} links in {time.time() - step_start:.3f}s")
 
-        # Create semantic links
+        # Create semantic links (within-batch + pre-computed ANN from Phase 1)
         step_start = time.time()
         embeddings_for_links = [fact.embedding for fact in processed_facts]
         semantic_link_count = await link_creation.create_semantic_links_batch(
-            conn, bank_id, unit_ids, embeddings_for_links
+            conn, bank_id, unit_ids, embeddings_for_links,
+            pre_computed_ann_links=semantic_ann_links,
         )
         log_buffer.append(f"  Semantic links: {semantic_link_count} links in {time.time() - step_start:.3f}s")
 
@@ -509,7 +531,7 @@ async def retain_batch(
         # This avoids holding the write transaction open during slow reads
         # that previously caused TimeoutErrors under concurrent load.
         # ================================================================
-        resolved_entity_ids, entity_to_unit, unit_to_entity_ids = await _pre_resolve_entities(
+        resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links = await _pre_resolve_phase1(
             pool, entity_resolver, bank_id, contents, processed_facts, config, log_buffer
         )
 
@@ -615,6 +637,7 @@ async def retain_batch(
                     resolved_entity_ids=resolved_entity_ids,
                     entity_to_unit=entity_to_unit,
                     unit_to_entity_ids=unit_to_entity_ids,
+                    semantic_ann_links=semantic_ann_links,
                 )
 
             # ================================================================
@@ -797,8 +820,8 @@ async def _try_delta_retain(
             pf.chunk_id = None
         entity_resolver.discard_pending_stats()
 
-        # PHASE 1 — Entity Resolution (separate connection, read-heavy)
-        resolved_entity_ids, entity_to_unit, unit_to_entity_ids = await _pre_resolve_entities(
+        # PHASE 1 — Entity Resolution + Semantic ANN (separate connection, read-heavy)
+        resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links = await _pre_resolve_phase1(
             pool, entity_resolver, bank_id, contents, processed_facts, config, log_buffer
         )
 
@@ -888,6 +911,7 @@ async def _try_delta_retain(
                     resolved_entity_ids=resolved_entity_ids,
                     entity_to_unit=entity_to_unit,
                     unit_to_entity_ids=unit_to_entity_ids,
+                    semantic_ann_links=semantic_ann_links,
                 )
 
             # PHASE 3 — Best-Effort Display Data (post-transaction)
