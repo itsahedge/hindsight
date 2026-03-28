@@ -1490,7 +1490,7 @@ async def extract_facts_from_text(
             except Exception as e:
                 last_exception = e
                 if attempt < MAX_CHUNK_RETRIES - 1:
-                    delay = CHUNK_RETRY_BASE_DELAY * (2 ** attempt)
+                    delay = CHUNK_RETRY_BASE_DELAY * (2**attempt)
                     logger.warning(
                         f"Chunk {chunk_index}/{len(chunks)} extraction failed "
                         f"(attempt {attempt + 1}/{MAX_CHUNK_RETRIES}): "
@@ -1528,9 +1528,7 @@ async def extract_facts_from_text(
         # Fail the entire retain — partial extraction is not acceptable.
         # All successfully extracted facts are discarded because the transaction
         # hasn't committed yet. The worker poller will retry the entire task.
-        failed_summary = ", ".join(
-            f"chunk {idx}: {type(err).__name__}" for idx, err in failed_chunks[:5]
-        )
+        failed_summary = ", ".join(f"chunk {idx}: {type(err).__name__}" for idx, err in failed_chunks[:5])
         raise RuntimeError(
             f"Fact extraction failed: {len(failed_chunks)}/{len(chunks)} chunks failed "
             f"after {MAX_CHUNK_RETRIES} retries each. First failures: {failed_summary}"

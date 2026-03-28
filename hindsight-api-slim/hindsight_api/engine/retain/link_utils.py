@@ -643,32 +643,39 @@ async def create_temporal_links_batch_per_fact(
             lateral_fact_types = [e[2] for e in new_unit_entries]
             exclude_uuids = [uuid_mod.UUID(uid) if isinstance(uid, str) else uid for uid in unit_ids]
 
-            rows = await conn.fetch(
-                f"""
-                SELECT src.unit_id::text AS from_id, n.id, n.event_date,
-                       ABS(EXTRACT(EPOCH FROM n.event_date - src.event_date)) / 3600.0 AS time_diff_hours
-                FROM unnest($1::uuid[], $2::timestamptz[], $3::text[])
-                     AS src(unit_id, event_date, fact_type)
-                CROSS JOIN LATERAL (
-                    SELECT mu.id, mu.event_date
-                    FROM {fq_table("memory_units")} mu
-                    WHERE mu.bank_id = $4
-                      AND mu.fact_type = src.fact_type
-                      AND mu.event_date BETWEEN src.event_date - make_interval(hours => $6)
-                                             AND src.event_date + make_interval(hours => $6)
-                      AND mu.id != src.unit_id
-                      AND mu.id != ALL($5::uuid[])
-                    ORDER BY ABS(EXTRACT(EPOCH FROM mu.event_date - src.event_date))
-                    LIMIT {MAX_TEMPORAL_LINKS_PER_UNIT}
-                ) n
-                """,
-                lateral_unit_ids,
-                lateral_event_dates,
-                lateral_fact_types,
-                bank_id,
-                exclude_uuids,
-                time_window_hours,
-            )
+            # Batch the LATERAL query to avoid PostgreSQL timeouts on large batches
+            # (e.g., 16k units × LATERAL subquery each = too much for one statement).
+            TEMPORAL_LATERAL_BATCH = 500
+            rows = []
+            for batch_start in range(0, len(new_unit_entries), TEMPORAL_LATERAL_BATCH):
+                batch_end = batch_start + TEMPORAL_LATERAL_BATCH
+                batch_rows = await conn.fetch(
+                    f"""
+                    SELECT src.unit_id::text AS from_id, n.id, n.event_date,
+                           ABS(EXTRACT(EPOCH FROM n.event_date - src.event_date)) / 3600.0 AS time_diff_hours
+                    FROM unnest($1::uuid[], $2::timestamptz[], $3::text[])
+                         AS src(unit_id, event_date, fact_type)
+                    CROSS JOIN LATERAL (
+                        SELECT mu.id, mu.event_date
+                        FROM {fq_table("memory_units")} mu
+                        WHERE mu.bank_id = $4
+                          AND mu.fact_type = src.fact_type
+                          AND mu.event_date BETWEEN src.event_date - make_interval(hours => $6)
+                                                 AND src.event_date + make_interval(hours => $6)
+                          AND mu.id != src.unit_id
+                          AND mu.id != ALL($5::uuid[])
+                        ORDER BY ABS(EXTRACT(EPOCH FROM mu.event_date - src.event_date))
+                        LIMIT {MAX_TEMPORAL_LINKS_PER_UNIT}
+                    ) n
+                    """,
+                    lateral_unit_ids[batch_start:batch_end],
+                    lateral_event_dates[batch_start:batch_end],
+                    lateral_fact_types[batch_start:batch_end],
+                    bank_id,
+                    exclude_uuids,
+                    time_window_hours,
+                )
+                rows.extend(batch_rows)
         else:
             rows = []
 
