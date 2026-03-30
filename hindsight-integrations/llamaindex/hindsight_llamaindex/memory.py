@@ -67,8 +67,9 @@ class HindsightMemory(BaseMemory):
             mission="Track user preferences",
         )
 
-        # Use with any LlamaIndex agent
-        agent = ReActAgent(tools=tools, llm=llm, memory=memory)
+        # Use with any LlamaIndex agent — pass memory to run(), not the constructor
+        agent = ReActAgent(tools=[], llm=llm)
+        response = await agent.run("Hello!", memory=memory)
     """
 
     bank_id: str = Field(description="Hindsight memory bank ID")
