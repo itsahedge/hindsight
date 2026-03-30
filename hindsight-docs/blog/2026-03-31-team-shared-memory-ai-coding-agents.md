@@ -73,7 +73,14 @@ The mechanism is straightforward: every developer points their plugin at the sam
 
 ### Claude Code
 
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) is Anthropic's official CLI. Edit `~/.hindsight/claude-code.json` on each developer's machine:
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) is Anthropic's official CLI. Install the Hindsight plugin once per machine:
+
+```bash
+claude plugin marketplace add vectorize-io/hindsight
+claude plugin install hindsight-memory
+```
+
+Then edit `~/.hindsight/claude-code.json` to point every developer at the shared bank:
 
 ```json
 {
@@ -89,7 +96,13 @@ That's it. Every developer with this config writes to and reads from the same `t
 
 ### Codex
 
-[Codex](https://github.com/openai/codex) is OpenAI's open-source coding agent CLI. Same pattern, edit `~/.hindsight/codex.json` on each machine:
+[Codex](https://github.com/openai/codex) is OpenAI's open-source coding agent CLI. Install the Hindsight hooks once per machine:
+
+```bash
+curl -fsSL https://hindsight.vectorize.io/get-codex | bash
+```
+
+Then edit `~/.hindsight/codex.json` on each machine:
 
 ```json
 {
