@@ -18,7 +18,7 @@ It doesn't have to work this way.
 
 Hindsight supports a shared memory bank, a single store that every developer's AI coding agent reads from and writes to. Architecture decisions, coding conventions, known bugs, team context. One config change, and your whole team's agents share one brain.
 
-With both [Claude Code](/blog/openclaude-build-a-claude-code-agent-with-long-term-memory) and [Codex](/sdks/integrations/codex) integrations now available, this works whether your team uses Anthropic's or OpenAI's tooling, or both.
+With both [Claude Code](https://hindsight.vectorize.io/sdks/integrations/claude-code) and [Codex](/sdks/integrations/codex) integrations now available, this works whether your team uses Anthropic's or OpenAI's tooling, or both.
 
 ---
 
@@ -194,8 +194,8 @@ Three ways to run this:
 
 | Option | Setup | Data control | Best for |
 |--------|-------|-------------|----------|
-| **Hindsight Cloud** | Zero setup, share an API token | Hosted by Vectorize | Teams that want to start immediately |
-| **Self-hosted** | Deploy on your own infra via Docker | Fully yours | Enterprise, compliance requirements |
+| **Hindsight Cloud** | Zero setup, share an API token | Hosted by Vectorize | Most teams, including enterprise |
+| **Self-hosted** | Deploy on your own infra via Docker | Fully yours | Regulated industries with on-prem requirements |
 | **Local per-machine** | Each developer runs `hindsight-embed` locally | Local only | Sensitive codebases, no external calls |
 
 For most teams, Hindsight Cloud is the right starting point. Share one API key, pick a `bankId`, and you're done. For teams with strict data residency requirements, the [self-hosted deployment](/developer/installation) gives you full control.
