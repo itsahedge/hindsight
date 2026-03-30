@@ -8,6 +8,7 @@ import styles from './styles.module.css';
 
 const CLOUD_TAG = 'hindsight-cloud';
 const CLOUD_PREVIEW_COUNT = 3;
+const HINDSIGHT_PREVIEW_COUNT = 9;
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -95,7 +96,7 @@ export default function BlogListPage({items, metadata}: Props): React.ReactEleme
               subtitle="Releases, guides, and deep dives into agent memory"
             />
             <div className={styles.grid}>
-              {hindsightPosts.map(({content: BlogPostContent}) => (
+              {hindsightPosts.slice(0, HINDSIGHT_PREVIEW_COUNT).map(({content: BlogPostContent}) => (
                 <BlogCard key={BlogPostContent.metadata.permalink} content={BlogPostContent} />
               ))}
             </div>
