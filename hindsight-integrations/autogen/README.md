@@ -21,7 +21,6 @@ pip install hindsight-autogen autogen-agentchat "autogen-ext[openai]"
 
 ```python
 import asyncio
-import time
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
 from hindsight_client import Hindsight
@@ -45,7 +44,7 @@ async def main():
     print(result.messages[-1].content)
 
     # Wait for Hindsight to finish processing (fact extraction is async)
-    time.sleep(3)
+    await asyncio.sleep(3)
 
     # Recall it later
     result = await agent.run(task="What are my UI preferences?")
