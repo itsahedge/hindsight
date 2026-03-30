@@ -159,7 +159,9 @@ class ExtractedFact(BaseModel):
     fact_kind: str = Field(default="conversation", description="'event' or 'conversation'")
     occurred_start: str | None = Field(default=None, description="ISO timestamp for events")
     occurred_end: str | None = Field(default=None, description="ISO timestamp for event end")
-    fact_type: Literal["world", "assistant"] = Field(description="'world' = objective/external facts. 'assistant' = first-person actions, experiences, or observations by the speaker.")
+    fact_type: Literal["world", "assistant"] = Field(
+        description="'world' = objective/external facts. 'assistant' = first-person actions, experiences, or observations by the speaker."
+    )
     entities: list[Entity] | None = Field(default=None, description="People, places, concepts")
     causal_relations: list[FactCausalRelation] | None = Field(
         default=None, description="Links to previous facts (target_index < this fact's index)"
@@ -352,7 +354,9 @@ class VerbatimExtractedFact(BaseModel):
     fact_kind: str = Field(default="conversation", description="'event' or 'conversation'")
     occurred_start: str | None = Field(default=None, description="ISO timestamp for events")
     occurred_end: str | None = Field(default=None, description="ISO timestamp for event end")
-    fact_type: Literal["world", "assistant"] = Field(description="'world' = objective/external facts. 'assistant' = first-person actions, experiences, or observations by the speaker.")
+    fact_type: Literal["world", "assistant"] = Field(
+        description="'world' = objective/external facts. 'assistant' = first-person actions, experiences, or observations by the speaker."
+    )
     entities: list[Entity] | None = Field(default=None, description="People, places, concepts")
 
     @field_validator("entities", mode="before")
