@@ -341,6 +341,14 @@
         },
         {
           "type": "doc",
+          "id": "sdks/integrations/codex",
+          "label": "OpenAI Codex CLI",
+          "customProps": {
+            "icon": "/img/icons/openai.png"
+          }
+        },
+        {
+          "type": "doc",
           "id": "sdks/integrations/skills",
           "label": "Skills",
           "customProps": {
