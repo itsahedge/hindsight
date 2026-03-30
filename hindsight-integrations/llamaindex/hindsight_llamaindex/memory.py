@@ -200,7 +200,7 @@ class HindsightMemory(BaseMemory):
         self._bank_initialized = True
 
     def _generate_document_id(self) -> str:
-        return f"{self._session_id}-{int(time.time() * 1000)}"
+        return f"{self._session_id}-{uuid.uuid4().hex[:12]}"
 
     def _retain_message(self, message: ChatMessage) -> None:
         """Retain a message to Hindsight (sync)."""

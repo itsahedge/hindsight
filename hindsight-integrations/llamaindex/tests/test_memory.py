@@ -164,9 +164,10 @@ class TestPut:
 
         kwargs = client.retain.call_args[1]
         doc_id = kwargs["document_id"]
-        parts = doc_id.rsplit("-", 1)
-        assert len(parts) == 2
-        assert parts[1].isdigit()
+        # Auto-generated format: {session_id}-{uuid_hex_12}
+        assert "-" in doc_id
+        suffix = doc_id.rsplit("-", 1)[1]
+        assert len(suffix) == 12
 
 
 class TestGet:
