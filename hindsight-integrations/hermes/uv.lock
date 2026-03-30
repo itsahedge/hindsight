@@ -851,7 +851,7 @@ wheels = [
 [[package]]
 name = "hermes-agent"
 version = "0.5.0"
-source = { git = "https://github.com/NousResearch/hermes-agent.git?rev=v2026.3.28#558cc14ad91ec46ae21430cecbef8e7903be57a7" }
+source = { git = "https://github.com/NousResearch/hermes-agent.git?tag=v2026.3.28#558cc14ad91ec46ae21430cecbef8e7903be57a7" }
 dependencies = [
     { name = "anthropic", marker = "python_full_version >= '3.11'" },
     { name = "edge-tts", marker = "python_full_version >= '3.11'" },
@@ -953,7 +953,7 @@ provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "hermes-agent", marker = "python_full_version >= '3.11'", git = "https://github.com/NousResearch/hermes-agent.git?rev=v2026.3.28" },
+    { name = "hermes-agent", marker = "python_full_version >= '3.11'", git = "https://github.com/NousResearch/hermes-agent.git?tag=v2026.3.28" },
     { name = "pytest", specifier = ">=9.0.2" },
     { name = "pytest-asyncio", specifier = ">=0.23.0" },
 ]
