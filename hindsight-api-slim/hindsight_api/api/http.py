@@ -5103,6 +5103,10 @@ def _register_routes(app: FastAPI):
 
                 items = []
                 for row in rows:
+                    duration_ms = None
+                    if row["started_at"] and row["ended_at"]:
+                        duration_ms = int((row["ended_at"] - row["started_at"]).total_seconds() * 1000)
+
                     items.append(
                         {
                             "id": str(row["id"]),
@@ -5111,6 +5115,7 @@ def _register_routes(app: FastAPI):
                             "bank_id": row["bank_id"],
                             "started_at": row["started_at"].isoformat() if row["started_at"] else None,
                             "ended_at": row["ended_at"].isoformat() if row["ended_at"] else None,
+                            "duration_ms": duration_ms,
                             "request": json.loads(row["request"]) if row["request"] else None,
                             "response": json.loads(row["response"]) if row["response"] else None,
                             "metadata": json.loads(row["metadata"]) if row["metadata"] else {},
