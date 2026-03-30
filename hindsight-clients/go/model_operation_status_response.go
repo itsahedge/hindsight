@@ -27,6 +27,7 @@ type OperationStatusResponse struct {
 	CreatedAt NullableString `json:"created_at,omitempty"`
 	UpdatedAt NullableString `json:"updated_at,omitempty"`
 	CompletedAt NullableString `json:"completed_at,omitempty"`
+	DurationMs NullableInt32 `json:"duration_ms,omitempty"`
 	ErrorMessage NullableString `json:"error_message,omitempty"`
 	ResultMetadata map[string]interface{} `json:"result_metadata,omitempty"`
 	ChildOperations []ChildOperationStatus `json:"child_operations,omitempty"`
@@ -269,6 +270,48 @@ func (o *OperationStatusResponse) UnsetCompletedAt() {
 	o.CompletedAt.Unset()
 }
 
+// GetDurationMs returns the DurationMs field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *OperationStatusResponse) GetDurationMs() int32 {
+	if o == nil || IsNil(o.DurationMs.Get()) {
+		var ret int32
+		return ret
+	}
+	return *o.DurationMs.Get()
+}
+
+// GetDurationMsOk returns a tuple with the DurationMs field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *OperationStatusResponse) GetDurationMsOk() (*int32, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.DurationMs.Get(), o.DurationMs.IsSet()
+}
+
+// HasDurationMs returns a boolean if a field has been set.
+func (o *OperationStatusResponse) HasDurationMs() bool {
+	if o != nil && o.DurationMs.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetDurationMs gets a reference to the given NullableInt32 and assigns it to the DurationMs field.
+func (o *OperationStatusResponse) SetDurationMs(v int32) {
+	o.DurationMs.Set(&v)
+}
+// SetDurationMsNil sets the value for DurationMs to be an explicit nil
+func (o *OperationStatusResponse) SetDurationMsNil() {
+	o.DurationMs.Set(nil)
+}
+
+// UnsetDurationMs ensures that no value is present for DurationMs, not even an explicit nil
+func (o *OperationStatusResponse) UnsetDurationMs() {
+	o.DurationMs.Unset()
+}
+
 // GetErrorMessage returns the ErrorMessage field value if set, zero value otherwise (both if not set or set to explicit null).
 func (o *OperationStatusResponse) GetErrorMessage() string {
 	if o == nil || IsNil(o.ErrorMessage.Get()) {
@@ -400,6 +443,9 @@ func (o OperationStatusResponse) ToMap() (map[string]interface{}, error) {
 	}
 	if o.CompletedAt.IsSet() {
 		toSerialize["completed_at"] = o.CompletedAt.Get()
+	}
+	if o.DurationMs.IsSet() {
+		toSerialize["duration_ms"] = o.DurationMs.Get()
 	}
 	if o.ErrorMessage.IsSet() {
 		toSerialize["error_message"] = o.ErrorMessage.Get()

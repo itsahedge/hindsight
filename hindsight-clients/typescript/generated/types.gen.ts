@@ -1385,6 +1385,12 @@ export type OperationResponse = {
    * Error Message
    */
   error_message: string | null;
+  /**
+   * Duration Ms
+   *
+   * Server-computed duration in milliseconds (created_at → completed_at). Null if not yet completed.
+   */
+  duration_ms?: number | null;
 };
 
 /**
@@ -1417,6 +1423,12 @@ export type OperationStatusResponse = {
    * Completed At
    */
   completed_at?: string | null;
+  /**
+   * Duration Ms
+   *
+   * Server-computed duration in milliseconds (created_at → completed_at). Null if not yet completed.
+   */
+  duration_ms?: number | null;
   /**
    * Error Message
    */

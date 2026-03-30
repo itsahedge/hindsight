@@ -7174,7 +7174,7 @@ class MemoryEngine(MemoryEngineInterface):
             # Get operations with pagination (include result_metadata to check for parent operations)
             operations = await conn.fetch(
                 f"""
-                SELECT operation_id, operation_type, created_at, status, error_message, result_metadata
+                SELECT operation_id, operation_type, created_at, completed_at, status, error_message, result_metadata
                 FROM {fq_table("async_operations")}
                 WHERE {where_clause}
                 ORDER BY created_at DESC
@@ -7193,6 +7193,10 @@ class MemoryEngine(MemoryEngineInterface):
                 db_status = row["status"]
                 api_status = "pending" if db_status in ("pending", "processing") else db_status
 
+                duration_ms = None
+                if row["completed_at"] and row["created_at"]:
+                    duration_ms = int((row["completed_at"] - row["created_at"]).total_seconds() * 1000)
+
                 operation_list.append(
                     {
                         "id": str(row["operation_id"]),
@@ -7202,6 +7206,7 @@ class MemoryEngine(MemoryEngineInterface):
                         "created_at": row["created_at"].isoformat(),
                         "status": api_status,
                         "error_message": row["error_message"],
+                        "duration_ms": duration_ms,
                     }
                 )
 
@@ -7318,6 +7323,10 @@ class MemoryEngine(MemoryEngineInterface):
                         )
                         api_status = correct_status
 
+                    duration_ms = None
+                    if row["completed_at"] and row["created_at"]:
+                        duration_ms = int((row["completed_at"] - row["created_at"]).total_seconds() * 1000)
+
                     return {
                         "operation_id": operation_id,
                         "status": api_status,
@@ -7325,12 +7334,17 @@ class MemoryEngine(MemoryEngineInterface):
                         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                         "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
                         "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
+                        "duration_ms": duration_ms,
                         "error_message": row["error_message"],
                         "result_metadata": result_metadata,
                         "child_operations": child_statuses,
                     }
                 else:
                     # Regular operation (not a parent)
+                    duration_ms = None
+                    if row["completed_at"] and row["created_at"]:
+                        duration_ms = int((row["completed_at"] - row["created_at"]).total_seconds() * 1000)
+
                     return {
                         "operation_id": operation_id,
                         "status": api_status,
@@ -7338,6 +7352,7 @@ class MemoryEngine(MemoryEngineInterface):
                         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                         "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
                         "completed_at": row["completed_at"].isoformat() if row["completed_at"] else None,
+                        "duration_ms": duration_ms,
                         "error_message": row["error_message"],
                         "result_metadata": result_metadata,
                     }

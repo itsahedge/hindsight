@@ -28,6 +28,7 @@ type OperationResponse struct {
 	CreatedAt string `json:"created_at"`
 	Status string `json:"status"`
 	ErrorMessage NullableString `json:"error_message"`
+	DurationMs NullableInt32 `json:"duration_ms,omitempty"`
 }
 
 type _OperationResponse OperationResponse
@@ -243,6 +244,48 @@ func (o *OperationResponse) SetErrorMessage(v string) {
 	o.ErrorMessage.Set(&v)
 }
 
+// GetDurationMs returns the DurationMs field value if set, zero value otherwise (both if not set or set to explicit null).
+func (o *OperationResponse) GetDurationMs() int32 {
+	if o == nil || IsNil(o.DurationMs.Get()) {
+		var ret int32
+		return ret
+	}
+	return *o.DurationMs.Get()
+}
+
+// GetDurationMsOk returns a tuple with the DurationMs field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+// NOTE: If the value is an explicit nil, `nil, true` will be returned
+func (o *OperationResponse) GetDurationMsOk() (*int32, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.DurationMs.Get(), o.DurationMs.IsSet()
+}
+
+// HasDurationMs returns a boolean if a field has been set.
+func (o *OperationResponse) HasDurationMs() bool {
+	if o != nil && o.DurationMs.IsSet() {
+		return true
+	}
+
+	return false
+}
+
+// SetDurationMs gets a reference to the given NullableInt32 and assigns it to the DurationMs field.
+func (o *OperationResponse) SetDurationMs(v int32) {
+	o.DurationMs.Set(&v)
+}
+// SetDurationMsNil sets the value for DurationMs to be an explicit nil
+func (o *OperationResponse) SetDurationMsNil() {
+	o.DurationMs.Set(nil)
+}
+
+// UnsetDurationMs ensures that no value is present for DurationMs, not even an explicit nil
+func (o *OperationResponse) UnsetDurationMs() {
+	o.DurationMs.Unset()
+}
+
 func (o OperationResponse) MarshalJSON() ([]byte, error) {
 	toSerialize,err := o.ToMap()
 	if err != nil {
@@ -262,6 +305,9 @@ func (o OperationResponse) ToMap() (map[string]interface{}, error) {
 	toSerialize["created_at"] = o.CreatedAt
 	toSerialize["status"] = o.Status
 	toSerialize["error_message"] = o.ErrorMessage.Get()
+	if o.DurationMs.IsSet() {
+		toSerialize["duration_ms"] = o.DurationMs.Get()
+	}
 	return toSerialize, nil
 }
 

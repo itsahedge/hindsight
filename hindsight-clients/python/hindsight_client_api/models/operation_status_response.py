@@ -17,7 +17,7 @@ import pprint
 import re  # noqa: F401
 import json
 
-from pydantic import BaseModel, ConfigDict, StrictStr, field_validator
+from pydantic import BaseModel, ConfigDict, StrictInt, StrictStr, field_validator
 from typing import Any, ClassVar, Dict, List, Optional
 from hindsight_client_api.models.child_operation_status import ChildOperationStatus
 from typing import Optional, Set
@@ -33,10 +33,11 @@ class OperationStatusResponse(BaseModel):
     created_at: Optional[StrictStr] = None
     updated_at: Optional[StrictStr] = None
     completed_at: Optional[StrictStr] = None
+    duration_ms: Optional[StrictInt] = None
     error_message: Optional[StrictStr] = None
     result_metadata: Optional[Dict[str, Any]] = None
     child_operations: Optional[List[ChildOperationStatus]] = None
-    __properties: ClassVar[List[str]] = ["operation_id", "status", "operation_type", "created_at", "updated_at", "completed_at", "error_message", "result_metadata", "child_operations"]
+    __properties: ClassVar[List[str]] = ["operation_id", "status", "operation_type", "created_at", "updated_at", "completed_at", "duration_ms", "error_message", "result_metadata", "child_operations"]
 
     @field_validator('status')
     def status_validate_enum(cls, value):
@@ -111,6 +112,11 @@ class OperationStatusResponse(BaseModel):
         if self.completed_at is None and "completed_at" in self.model_fields_set:
             _dict['completed_at'] = None
 
+        # set to None if duration_ms (nullable) is None
+        # and model_fields_set contains the field
+        if self.duration_ms is None and "duration_ms" in self.model_fields_set:
+            _dict['duration_ms'] = None
+
         # set to None if error_message (nullable) is None
         # and model_fields_set contains the field
         if self.error_message is None and "error_message" in self.model_fields_set:
@@ -144,6 +150,7 @@ class OperationStatusResponse(BaseModel):
             "created_at": obj.get("created_at"),
             "updated_at": obj.get("updated_at"),
             "completed_at": obj.get("completed_at"),
+            "duration_ms": obj.get("duration_ms"),
             "error_message": obj.get("error_message"),
             "result_metadata": obj.get("result_metadata"),
             "child_operations": [ChildOperationStatus.from_dict(_item) for _item in obj["child_operations"]] if obj.get("child_operations") is not None else None

@@ -1600,8 +1600,9 @@ class OperationResponse(BaseModel):
                 "items_count": 5,
                 "document_id": None,
                 "created_at": "2024-01-15T10:30:00Z",
-                "status": "pending",
+                "status": "completed",
                 "error_message": None,
+                "duration_ms": 1530,
             }
         }
     )
@@ -1613,6 +1614,10 @@ class OperationResponse(BaseModel):
     created_at: str
     status: str
     error_message: str | None
+    duration_ms: int | None = Field(
+        default=None,
+        description="Server-computed duration in milliseconds (created_at → completed_at). Null if not yet completed.",
+    )
 
 
 class ConsolidationResponse(BaseModel):
@@ -1710,6 +1715,7 @@ class OperationStatusResponse(BaseModel):
                 "created_at": "2024-01-15T10:30:00Z",
                 "updated_at": "2024-01-15T10:31:30Z",
                 "completed_at": "2024-01-15T10:31:30Z",
+                "duration_ms": 90000,
                 "error_message": None,
             }
         }
@@ -1721,6 +1727,10 @@ class OperationStatusResponse(BaseModel):
     created_at: str | None = None
     updated_at: str | None = None
     completed_at: str | None = None
+    duration_ms: int | None = Field(
+        default=None,
+        description="Server-computed duration in milliseconds (created_at → completed_at). Null if not yet completed.",
+    )
     error_message: str | None = None
     result_metadata: dict[str, Any] | None = Field(
         default=None,

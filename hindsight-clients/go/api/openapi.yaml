@@ -4388,9 +4388,10 @@ components:
       description: Response model for a single async operation.
       example:
         created_at: 2024-01-15T10:30:00Z
+        duration_ms: 1530
         id: 550e8400-e29b-41d4-a716-446655440000
         items_count: 5
-        status: pending
+        status: completed
         task_type: retain
       properties:
         id:
@@ -4414,6 +4415,9 @@ components:
         error_message:
           nullable: true
           type: string
+        duration_ms:
+          nullable: true
+          type: integer
       required:
       - created_at
       - error_message
@@ -4427,6 +4431,7 @@ components:
       example:
         completed_at: 2024-01-15T10:31:30Z
         created_at: 2024-01-15T10:30:00Z
+        duration_ms: 90000
         operation_id: 550e8400-e29b-41d4-a716-446655440000
         operation_type: refresh_mental_models
         status: completed
@@ -4455,6 +4460,9 @@ components:
         completed_at:
           nullable: true
           type: string
+        duration_ms:
+          nullable: true
+          type: integer
         error_message:
           nullable: true
           type: string
