@@ -131,8 +131,8 @@ async def main():
     )
 
     # Session 2 (new agent instance, same bank_id)
-    agent = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o-mini"))
-    response = await agent.run("What IDE do I use?")
+    agent2 = ReActAgent(tools=tools, llm=OpenAI(model="gpt-4o-mini"))
+    response = await agent2.run("What IDE do I use?")
     # → "You use VS Code with dark mode."
     print(response)
 
