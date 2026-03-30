@@ -12,43 +12,8 @@ from hindsight_api.config import _get_raw_config
 from hindsight_api.engine.memory_engine import _current_schema
 from hindsight_api.extensions import MCPExtension, load_extension
 from hindsight_api.extensions.tenant import AuthenticationError
-from hindsight_api.mcp_tools import MCPToolsConfig, register_mcp_tools
+from hindsight_api.mcp_tools import _ALL_TOOLS, MCPToolsConfig, register_mcp_tools
 from hindsight_api.models import RequestContext
-
-# All tools available in the system (explicit list — no wildcards)
-_ALL_TOOLS: frozenset[str] = frozenset(
-    {
-        "retain",
-        "recall",
-        "reflect",
-        "list_banks",
-        "create_bank",
-        "list_mental_models",
-        "get_mental_model",
-        "create_mental_model",
-        "update_mental_model",
-        "delete_mental_model",
-        "refresh_mental_model",
-        "list_directives",
-        "create_directive",
-        "delete_directive",
-        "list_memories",
-        "get_memory",
-        "delete_memory",
-        "list_documents",
-        "get_document",
-        "delete_document",
-        "list_operations",
-        "get_operation",
-        "cancel_operation",
-        "list_tags",
-        "get_bank",
-        "get_bank_stats",
-        "update_bank",
-        "delete_bank",
-        "clear_memories",
-    }
-)
 
 # Configure logging from HINDSIGHT_API_LOG_LEVEL environment variable
 _log_level_str = os.environ.get("HINDSIGHT_API_LOG_LEVEL", "info").lower()
@@ -281,10 +246,12 @@ class MCPMiddleware:
             self.single_bank_server = single_bank_server
         else:
             # Create servers internally (for direct construction / tests)
+            global_config = _get_raw_config()
+            stateless = global_config.mcp_stateless
             self.multi_bank_server = create_mcp_server(memory, multi_bank=True)
-            self.multi_bank_app = self.multi_bank_server.http_app(path="/", stateless_http=True)
+            self.multi_bank_app = self.multi_bank_server.http_app(path="/", stateless_http=stateless)
             self.single_bank_server = create_mcp_server(memory, multi_bank=False)
-            self.single_bank_app = self.single_bank_server.http_app(path="/", stateless_http=True)
+            self.single_bank_app = self.single_bank_server.http_app(path="/", stateless_http=stateless)
 
     def _get_header(self, scope: dict, name: str) -> str | None:
         """Extract a header value from ASGI scope."""
@@ -306,6 +273,17 @@ class MCPMiddleware:
             # Not an MCP request — pass through to the inner app
             await self.app(scope, receive, send)
             return
+
+        # Handle GET-before-POST gracefully (Claude Code v2.1.84+ sends GET probe before POST initialize).
+        # Without a valid Mcp-Session-Id, GET has no meaningful response — return 200 OK so
+        # the client proceeds to POST initialize instead of marking the server as failed.
+        method = scope.get("method", "")
+        if method == "GET":
+            session_id = self._get_header(scope, "Mcp-Session-Id")
+            if not session_id:
+                logger.debug("MCP GET without session ID (client probe) — returning 200 OK")
+                await self._send_ok(send)
+                return
 
         # Strip prefix from path
         path = path[len(self.prefix) :] or "/"
@@ -436,6 +414,22 @@ class MCPMiddleware:
             if schema_token is not None:
                 _current_schema.reset(schema_token)
 
+    async def _send_ok(self, send):
+        """Send a 200 OK response with empty body (used for GET probes without session)."""
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": b"{}",
+            }
+        )
+
     async def _send_error(self, send, status: int, message: str, extra_headers: dict[str, str] | None = None):
         """Send an error response."""
         body = json.dumps({"error": message}).encode()
@@ -466,10 +460,14 @@ def create_mcp_servers(memory: MemoryEngine):
     Returns:
         Tuple of (multi_bank_server, single_bank_server, multi_bank_app, single_bank_app)
     """
+    global_config = _get_raw_config()
+    stateless = global_config.mcp_stateless
+
     multi_bank_server = create_mcp_server(memory, multi_bank=True)
-    multi_bank_app = multi_bank_server.http_app(path="/", stateless_http=True)
+    multi_bank_app = multi_bank_server.http_app(path="/", stateless_http=stateless)
 
     single_bank_server = create_mcp_server(memory, multi_bank=False)
-    single_bank_app = single_bank_server.http_app(path="/", stateless_http=True)
+    single_bank_app = single_bank_server.http_app(path="/", stateless_http=stateless)
 
+    logger.info(f"MCP servers created (stateless_http={stateless})")
     return multi_bank_server, single_bank_server, multi_bank_app, single_bank_app

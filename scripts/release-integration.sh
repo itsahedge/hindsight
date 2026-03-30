@@ -13,17 +13,18 @@ print_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
 print_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-VALID_INTEGRATIONS=("litellm" "pydantic-ai" "crewai" "ag2" "ai-sdk" "chat" "openclaw" "langgraph" "nemoclaw" "strands" "claude-code")
+VALID_INTEGRATIONS=("litellm" "pydantic-ai" "crewai" "ag2" "ai-sdk" "chat" "openclaw" "langgraph" "llamaindex" "nemoclaw" "strands" "claude-code" "codex" "hermes")
 
 usage() {
     print_error "Usage: $0 <integration> <version>"
     echo ""
     echo "  integration  One of: ${VALID_INTEGRATIONS[*]}"
-    echo "  version      Semantic version (e.g. 0.2.0)"
+    echo "  version      Semantic version (e.g. 0.2.0) or bump keyword: patch, minor, major"
     echo ""
     echo "Examples:"
     echo "  $0 litellm 0.2.0"
-    echo "  $0 pydantic-ai 1.0.0"
+    echo "  $0 pydantic-ai patch"
+    echo "  $0 crewai minor"
     exit 1
 }
 
@@ -32,7 +33,7 @@ if [ -z "$1" ] || [ -z "$2" ]; then
 fi
 
 INTEGRATION=$1
-VERSION=$2
+VERSION_ARG=$2
 
 # Validate integration name
 VALID=false
@@ -48,9 +49,47 @@ if [ "$VALID" = "false" ]; then
     exit 1
 fi
 
-# Validate version format
-if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    print_error "Invalid version format. Please use semantic versioning (e.g., 0.2.0)"
+# Read current version from package manifest
+get_current_version() {
+    local dir="hindsight-integrations/$INTEGRATION"
+    if [ -f "$dir/pyproject.toml" ]; then
+        grep '^version = ' "$dir/pyproject.toml" | sed 's/version = "\(.*\)"/\1/'
+    elif [ -f "$dir/package.json" ]; then
+        grep '"version"' "$dir/package.json" | head -1 | sed 's/.*"version": "\(.*\)".*/\1/'
+    elif [ -f "$dir/.claude-plugin/plugin.json" ]; then
+        grep '"version"' "$dir/.claude-plugin/plugin.json" | head -1 | sed 's/.*"version": "\(.*\)".*/\1/'
+    elif [ -f "$dir/settings.json" ] && grep -q '"version"' "$dir/settings.json"; then
+        grep '"version"' "$dir/settings.json" | head -1 | sed 's/.*"version": "\(.*\)".*/\1/'
+    else
+        echo ""
+    fi
+}
+
+# Bump a semver component: bump_version <current> <part>
+bump_version() {
+    local current=$1 part=$2
+    local major minor patch
+    IFS='.' read -r major minor patch <<< "$current"
+    case "$part" in
+        major) echo "$((major + 1)).0.0" ;;
+        minor) echo "$major.$((minor + 1)).0" ;;
+        patch) echo "$major.$minor.$((patch + 1))" ;;
+    esac
+}
+
+# Resolve version: either an explicit semver or a bump keyword
+if [[ "$VERSION_ARG" =~ ^(patch|minor|major)$ ]]; then
+    CURRENT_VERSION=$(get_current_version)
+    if [ -z "$CURRENT_VERSION" ]; then
+        print_error "Could not read current version for '$INTEGRATION'"
+        exit 1
+    fi
+    VERSION=$(bump_version "$CURRENT_VERSION" "$VERSION_ARG")
+    print_info "Bumping $CURRENT_VERSION → $VERSION ($VERSION_ARG)"
+elif [[ "$VERSION_ARG" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    VERSION=$VERSION_ARG
+else
+    print_error "Invalid version: '$VERSION_ARG'. Use a semver (e.g. 0.2.0) or bump keyword (patch, minor, major)"
     exit 1
 fi
 
@@ -116,8 +155,12 @@ elif [ -f "$INTEGRATION_DIR/.claude-plugin/plugin.json" ]; then
     print_info "Updating version in $INTEGRATION_DIR/.claude-plugin/plugin.json"
     sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$INTEGRATION_DIR/.claude-plugin/plugin.json"
     rm "$INTEGRATION_DIR/.claude-plugin/plugin.json.bak"
+elif [ -f "$INTEGRATION_DIR/settings.json" ] && grep -q '"version"' "$INTEGRATION_DIR/settings.json"; then
+    print_info "Updating version in $INTEGRATION_DIR/settings.json"
+    sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$INTEGRATION_DIR/settings.json"
+    rm "$INTEGRATION_DIR/settings.json.bak"
 else
-    print_error "No pyproject.toml, package.json, or plugin.json found in $INTEGRATION_DIR"
+    print_error "No pyproject.toml, package.json, plugin.json, or versioned settings.json found in $INTEGRATION_DIR"
     exit 1
 fi
 

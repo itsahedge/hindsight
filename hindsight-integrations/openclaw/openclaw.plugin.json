@@ -188,11 +188,34 @@
         "description": "Text shown above recalled memories in the injected context block.",
         "default": "Relevant memories from past conversations (prioritize recent when conflicting). Only use memories that are directly useful to continue this conversation; ignore the rest:"
       },
+      "recallTimeoutMs": {
+        "type": "integer",
+        "minimum": 1000,
+        "description": "Timeout for auto-recall in milliseconds. Increase if recall times out with high budget.",
+        "default": 10000
+      },
+      "recallInjectionPosition": {
+        "type": "string",
+        "enum": ["prepend", "append", "user"],
+        "description": "Where to inject recalled memories. 'prepend' = start of system prompt (default), 'append' = end of system prompt (preserves prompt cache), 'user' = before user message.",
+        "default": "prepend"
+      },
       "debug": {
         "type": "boolean",
-        "description": "Enable debug logging for Hindsight plugin operations.",
+        "description": "Enable debug logging for Hindsight plugin operations. Equivalent to logLevel: 'debug'.",
         "default": false
-      }
+      },
+      "logLevel": {
+        "type": "string",
+        "description": "Console log verbosity. 'off' = no output, 'error' = errors only, 'warning' = errors + warnings, 'info' = key events + periodic summaries, 'debug' = all details.",
+        "enum": ["off", "error", "warning", "info", "debug"],
+        "default": "info"
+      },
+      "logSummaryIntervalMs": {
+        "type": "number",
+        "description": "Interval in ms to batch retain/recall log summaries. 0 = log every event individually. Default: 300000 (5 min).",
+        "default": 300000
+      },
     },
     "additionalProperties": false
   },
@@ -309,8 +332,23 @@
       "label": "Recall Prompt Preamble",
       "placeholder": "Instruction shown above recalled memories in injected context"
     },
+    "recallTimeoutMs": {
+      "label": "Recall Timeout (ms)",
+      "placeholder": "10000 (default)"
+    },
+    "recallInjectionPosition": {
+      "label": "Recall Injection Position",
+      "placeholder": "prepend, append, or user"
+    },
     "debug": {
       "label": "Debug"
-    }
+    },
+    "logLevel": {
+      "label": "Log Level"
+    },
+    "logSummaryIntervalMs": {
+      "label": "Log Summary Interval (ms)",
+      "placeholder": "300000"
+    },
   }
 }

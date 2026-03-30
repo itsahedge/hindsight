@@ -32,11 +32,13 @@ jobs:
       integrations-ai-sdk: ${{ steps.filter.outputs.integrations-ai-sdk }}
       integrations-chat: ${{ steps.filter.outputs.integrations-chat }}
       integrations-claude-code: ${{ steps.filter.outputs.integrations-claude-code }}
+      integrations-codex: ${{ steps.filter.outputs.integrations-codex }}
       integrations-crewai: ${{ steps.filter.outputs.integrations-crewai }}
       integrations-litellm: ${{ steps.filter.outputs.integrations-litellm }}
       integrations-pydantic-ai: ${{ steps.filter.outputs.integrations-pydantic-ai }}
       integrations-ag2: ${{ steps.filter.outputs.integrations-ag2 }}
       integrations-hermes: ${{ steps.filter.outputs.integrations-hermes }}
+      integrations-llamaindex: ${{ steps.filter.outputs.integrations-llamaindex }}
       dev: ${{ steps.filter.outputs.dev }}
       ci: ${{ steps.filter.outputs.ci }}
     steps:
@@ -89,6 +91,8 @@ jobs:
             - 'hindsight-integrations/chat/**'
           integrations-claude-code:
             - 'hindsight-integrations/claude-code/**'
+          integrations-codex:
+            - 'hindsight-integrations/codex/**'
           integrations-crewai:
             - 'hindsight-integrations/crewai/**'
           integrations-litellm:
@@ -99,6 +103,8 @@ jobs:
             - 'hindsight-integrations/ag2/**'
           integrations-hermes:
             - 'hindsight-integrations/hermes/**'
+          integrations-llamaindex:
+            - 'hindsight-integrations/llamaindex/**'
           dev:
             - 'hindsight-dev/**'
           ci:
@@ -205,6 +211,29 @@ jobs:
 
     - name: Run tests
       working-directory: ./hindsight-integrations/claude-code
+      run: python -m pytest tests/ -v
+
+  test-codex-integration:
+    needs: [detect-changes]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.integrations-codex == 'true' ||
+      needs.detect-changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: '3.11'
+
+    - name: Install pytest
+      run: pip install pytest
+
+    - name: Run tests
+      working-directory: ./hindsight-integrations/codex
       run: python -m pytest tests/ -v
 
   build-ai-sdk-integration:
@@ -1658,6 +1687,40 @@ jobs:
 
     - name: Run tests
       working-directory: ./hindsight-integrations/hermes
+      run: uv run pytest tests -v
+
+  test-llamaindex-integration:
+    needs: [detect-changes]
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.detect-changes.outputs.integrations-llamaindex == 'true' ||
+      needs.detect-changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+        prune-cache: false
+
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version-file: ".python-version"
+
+    - name: Build llamaindex integration
+      working-directory: ./hindsight-integrations/llamaindex
+      run: uv build
+
+    - name: Install dependencies
+      working-directory: ./hindsight-integrations/llamaindex
+      run: uv sync --frozen
+
+    - name: Run tests
+      working-directory: ./hindsight-integrations/llamaindex
       run: uv run pytest tests -v
 
   test-pip-slim:

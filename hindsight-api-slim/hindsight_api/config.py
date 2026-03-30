@@ -238,6 +238,7 @@ ENV_LOG_FORMAT = "HINDSIGHT_API_LOG_FORMAT"
 ENV_WORKERS = "HINDSIGHT_API_WORKERS"
 ENV_MCP_ENABLED = "HINDSIGHT_API_MCP_ENABLED"
 ENV_MCP_ENABLED_TOOLS = "HINDSIGHT_API_MCP_ENABLED_TOOLS"
+ENV_MCP_STATELESS = "HINDSIGHT_API_MCP_STATELESS"
 ENV_ENABLE_BANK_CONFIG_API = "HINDSIGHT_API_ENABLE_BANK_CONFIG_API"
 ENV_GRAPH_RETRIEVER = "HINDSIGHT_API_GRAPH_RETRIEVER"
 ENV_MPFP_TOP_K_NEIGHBORS = "HINDSIGHT_API_MPFP_TOP_K_NEIGHBORS"
@@ -305,6 +306,7 @@ ENV_CONSOLIDATION_SOURCE_FACTS_MAX_TOKENS_PER_OBSERVATION = (
     "HINDSIGHT_API_CONSOLIDATION_SOURCE_FACTS_MAX_TOKENS_PER_OBSERVATION"
 )
 ENV_OBSERVATIONS_MISSION = "HINDSIGHT_API_OBSERVATIONS_MISSION"
+ENV_MAX_OBSERVATIONS_PER_SCOPE = "HINDSIGHT_API_MAX_OBSERVATIONS_PER_SCOPE"
 ENV_ENABLE_OBSERVATION_HISTORY = "HINDSIGHT_API_ENABLE_OBSERVATION_HISTORY"
 ENV_ENABLE_MENTAL_MODEL_HISTORY = "HINDSIGHT_API_ENABLE_MENTAL_MODEL_HISTORY"
 
@@ -443,6 +445,7 @@ DEFAULT_LOG_FORMAT = "text"  # Options: "text", "json"
 DEFAULT_WORKERS = 1
 DEFAULT_MCP_ENABLED = True
 DEFAULT_MCP_ENABLED_TOOLS: list[str] | None = None  # None = all tools enabled
+DEFAULT_MCP_STATELESS = False  # False = stateful (supports SSE/GET); True = stateless (POST-only)
 DEFAULT_ENABLE_BANK_CONFIG_API = True
 DEFAULT_GRAPH_RETRIEVER = "link_expansion"  # Options: "link_expansion", "mpfp", "bfs"
 DEFAULT_MPFP_TOP_K_NEIGHBORS = 20  # Fan-out limit per node in MPFP graph traversal
@@ -489,6 +492,7 @@ DEFAULT_CONSOLIDATION_SOURCE_FACTS_MAX_TOKENS_PER_OBSERVATION = (
     256  # Max tokens of source facts per observation in consolidation prompt (-1 = unlimited)
 )
 DEFAULT_OBSERVATIONS_MISSION = None  # Declarative spec of what observations are for this bank
+DEFAULT_MAX_OBSERVATIONS_PER_SCOPE = -1  # Max observations per tag scope (-1 = unlimited)
 
 # Database migrations
 DEFAULT_RUN_MIGRATIONS_ON_STARTUP = True
@@ -725,6 +729,7 @@ class HindsightConfig:
     log_format: str
     mcp_enabled: bool
     mcp_enabled_tools: list[str] | None  # None = all tools; explicit list = allowlist
+    mcp_stateless: bool  # True = stateless HTTP (POST-only); False = stateful (supports GET/SSE)
     enable_bank_config_api: bool
 
     # Recall
@@ -780,6 +785,7 @@ class HindsightConfig:
     consolidation_source_facts_max_tokens: int
     consolidation_source_facts_max_tokens_per_observation: int
     observations_mission: str | None
+    max_observations_per_scope: int
 
     # Entity labels (controlled vocabulary of key:value classification labels extracted at retain time)
     # List of label group dicts: [{key, description, type, optional, values: [{value, description}]}]
@@ -892,6 +898,7 @@ class HindsightConfig:
         "consolidation_source_facts_max_tokens",
         "consolidation_source_facts_max_tokens_per_observation",
         "observations_mission",
+        "max_observations_per_scope",
         # Reflect settings
         "reflect_mission",
         "reflect_source_facts_max_tokens",
@@ -1191,6 +1198,7 @@ class HindsightConfig:
             mcp_enabled_tools=[t.strip() for t in os.getenv(ENV_MCP_ENABLED_TOOLS).split(",") if t.strip()]
             if os.getenv(ENV_MCP_ENABLED_TOOLS)
             else DEFAULT_MCP_ENABLED_TOOLS,
+            mcp_stateless=os.getenv(ENV_MCP_STATELESS, str(DEFAULT_MCP_STATELESS)).lower() == "true",
             enable_bank_config_api=os.getenv(ENV_ENABLE_BANK_CONFIG_API, str(DEFAULT_ENABLE_BANK_CONFIG_API)).lower()
             == "true",
             # Recall
@@ -1289,6 +1297,9 @@ class HindsightConfig:
                 )
             ),
             observations_mission=os.getenv(ENV_OBSERVATIONS_MISSION) or DEFAULT_OBSERVATIONS_MISSION,
+            max_observations_per_scope=int(
+                os.getenv(ENV_MAX_OBSERVATIONS_PER_SCOPE, str(DEFAULT_MAX_OBSERVATIONS_PER_SCOPE))
+            ),
             entity_labels=None,
             entities_allow_free_form=True,
             # Database migrations
