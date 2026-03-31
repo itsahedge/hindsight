@@ -523,78 +523,6 @@ async def build_entity_links_from_resolved(
     return links
 
 
-async def extract_entities_batch_optimized(
-    entity_resolver,
-    conn,
-    bank_id: str,
-    unit_ids: list[str],
-    sentences: list[str],
-    context: str,
-    fact_dates: list,
-    llm_entities: list[list[dict]],
-    log_buffer: list[str] = None,
-    entity_labels: list | None = None,
-) -> list[tuple]:
-    """
-    Process LLM-extracted entities for ALL facts in batch.
-
-    Uses entities provided by the LLM (no spaCy needed), then resolves
-    and links them in bulk.
-
-    NOTE: This is the legacy single-connection path that runs both entity
-    resolution and link building on the same connection.  The split-transaction
-    path (resolve_entities_only + build_entity_links_from_resolved) is preferred
-    for concurrent workloads.
-
-    Args:
-        entity_resolver: EntityResolver instance for entity resolution
-        conn: Database connection
-        bank_id: Bank identifier
-        unit_ids: List of unit IDs
-        sentences: List of fact sentences
-        context: Context string
-        fact_dates: List of fact dates
-        llm_entities: List of entity lists from LLM extraction
-        log_buffer: Optional buffer for logging
-
-    Returns:
-        List of tuples for batch insertion: (from_unit_id, to_unit_id, link_type, weight, entity_id)
-    """
-    try:
-        resolved_entity_ids, entity_to_unit, unit_to_entity_ids = await resolve_entities_only(
-            entity_resolver,
-            conn,
-            bank_id,
-            unit_ids,
-            sentences,
-            context,
-            fact_dates,
-            llm_entities,
-            log_buffer,
-            entity_labels,
-        )
-
-        links = await build_entity_links_from_resolved(
-            entity_resolver,
-            conn,
-            bank_id,
-            unit_ids,
-            resolved_entity_ids,
-            entity_to_unit,
-            unit_to_entity_ids,
-            log_buffer,
-        )
-
-        return links
-
-    except Exception as e:
-        logger.error(f"Failed to extract entities in batch: {str(e)}")
-        import traceback
-
-        traceback.print_exc()
-        raise
-
-
 async def create_temporal_links_batch_per_fact(
     conn,
     bank_id: str,
@@ -959,9 +887,6 @@ async def create_semantic_links_batch(
     ANN results from Phase 1 are passed in via pre_computed_ann_links and
     inserted alongside the within-batch links.
 
-    If pre_computed_ann_links is None, falls back to running ANN inline
-    (legacy path for backward compatibility).
-
     Args:
         conn: Database connection (inside write transaction)
         bank_id: Bank identifier
@@ -993,18 +918,12 @@ async def create_semantic_links_batch(
         )
 
         # Add pre-computed ANN links from Phase 1
-        if pre_computed_ann_links is not None:
+        if pre_computed_ann_links:
             all_links.extend(pre_computed_ann_links)
             _log(
                 log_buffer,
                 f"      [8.2] Pre-computed ANN: {len(pre_computed_ann_links)} links",
             )
-        else:
-            # Legacy fallback: run ANN inline (for backward compatibility / tests)
-            ann_links = await compute_semantic_links_ann(
-                conn, bank_id, unit_ids, embeddings, top_k, threshold, log_buffer
-            )
-            all_links.extend(ann_links)
 
         if all_links:
             insert_start = time_mod.time()

@@ -209,12 +209,12 @@ async def _insert_facts_and_links(
     processed_facts: list[ProcessedFact],
     config,
     log_buffer: list[str],
-    outbox_callback=None,
-    resolved_entity_ids: list[str] | None = None,
-    entity_to_unit: list[tuple] | None = None,
-    unit_to_entity_ids: dict[str, list[str]] | None = None,
-    semantic_ann_links: list[tuple] | None = None,
+    resolved_entity_ids: list[str],
+    entity_to_unit: list[tuple],
+    unit_to_entity_ids: dict[str, list[str]],
+    semantic_ann_links: list[tuple],
     skip_semantic_links: bool = False,
+    outbox_callback=None,
 ) -> tuple[list[list[str]], list]:
     """
     Phase 2 of the retain pipeline: insert facts and retrieval-critical links.
@@ -238,50 +238,28 @@ async def _insert_facts_and_links(
     phase3_context: dict = {"unit_ids": [], "resolved_entity_ids": [], "entity_to_unit": [], "unit_to_entity_ids": {}}
 
     if unit_ids:
-        if resolved_entity_ids is not None and entity_to_unit is not None and unit_to_entity_ids is not None:
-            # Fast path: entity resolution was done in Phase 1 (separate connection).
-            # Remap placeholder IDs to actual unit IDs.
-            step_start = time.time()
-            remapped_entity_to_unit, remapped_unit_to_entity_ids, remapped_semantic = _remap_phase1_results(
-                resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links or [], unit_ids
-            )
-            # Update semantic_ann_links with remapped IDs for Phase 2
-            semantic_ann_links = remapped_semantic
-            # INSERT unit_entities (FK to memory_units, must be in transaction)
-            unit_entity_pairs = [
-                (unit_id, resolved_entity_ids[idx])
-                for idx, (unit_id, _local_idx, _fact_date) in enumerate(remapped_entity_to_unit)
-            ]
-            await entity_resolver.link_units_to_entities_batch(unit_entity_pairs, conn=conn)
-            log_buffer.append(
-                f"  Insert unit_entities: {len(unit_entity_pairs)} pairs in {time.time() - step_start:.3f}s"
-            )
-            # Save context for Phase 3 entity link building (after commit)
-            phase3_context = {
-                "unit_ids": unit_ids,
-                "resolved_entity_ids": resolved_entity_ids,
-                "entity_to_unit": remapped_entity_to_unit,
-                "unit_to_entity_ids": remapped_unit_to_entity_ids,
-            }
-        else:
-            # Fallback path: full entity processing inside the transaction
-            step_start = time.time()
-            user_entities_per_content = {
-                idx: content.entities for idx, content in enumerate(contents) if content.entities
-            }
-            entity_links = await entity_processing.process_entities_batch(
-                entity_resolver,
-                conn,
-                bank_id,
-                unit_ids,
-                processed_facts,
-                log_buffer,
-                user_entities_per_content=user_entities_per_content,
-                entity_labels=getattr(config, "entity_labels", None),
-            )
-            log_buffer.append(f"  Process entities: {len(entity_links)} links in {time.time() - step_start:.3f}s")
-            # In fallback path, entity links are already built — store them directly
-            phase3_context = {"entity_links": entity_links}
+        # Entity resolution was done in Phase 1 (separate connection).
+        # Remap placeholder IDs to actual unit IDs.
+        step_start = time.time()
+        remapped_entity_to_unit, remapped_unit_to_entity_ids, remapped_semantic = _remap_phase1_results(
+            resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links or [], unit_ids
+        )
+        # Update semantic_ann_links with remapped IDs for Phase 2
+        semantic_ann_links = remapped_semantic
+        # INSERT unit_entities (FK to memory_units, must be in transaction)
+        unit_entity_pairs = [
+            (unit_id, resolved_entity_ids[idx])
+            for idx, (unit_id, _local_idx, _fact_date) in enumerate(remapped_entity_to_unit)
+        ]
+        await entity_resolver.link_units_to_entities_batch(unit_entity_pairs, conn=conn)
+        log_buffer.append(f"  Insert unit_entities: {len(unit_entity_pairs)} pairs in {time.time() - step_start:.3f}s")
+        # Save context for Phase 3 entity link building (after commit)
+        phase3_context = {
+            "unit_ids": unit_ids,
+            "resolved_entity_ids": resolved_entity_ids,
+            "entity_to_unit": remapped_entity_to_unit,
+            "unit_to_entity_ids": remapped_unit_to_entity_ids,
+        }
 
         # Create temporal links
         step_start = time.time()
@@ -336,17 +314,7 @@ async def _build_and_insert_entity_links_phase3(
     Entity links are for UI graph visualization only — retrieval uses
     the unit_entities self-join instead.
     """
-    # If entity_links were already built (fallback path), insert directly
-    if "entity_links" in phase3_ctx:
-        entity_links = phase3_ctx["entity_links"]
-        if entity_links:
-            async with acquire_with_retry(pool) as conn:
-                step_start = time.time()
-                await entity_processing.insert_entity_links_batch(conn, entity_links, bank_id)
-                log_buffer.append(f"  Entity links (viz): {len(entity_links)} links in {time.time() - step_start:.3f}s")
-        return
-
-    # Fast path: build entity links from Phase 1 resolution data
+    # Build entity links from Phase 1 resolution data
     p3_unit_ids = phase3_ctx.get("unit_ids", [])
     p3_resolved = phase3_ctx.get("resolved_entity_ids", [])
     p3_entity_to_unit = phase3_ctx.get("entity_to_unit", [])
@@ -687,11 +655,11 @@ async def retain_batch(
                     processed_facts,
                     config,
                     log_buffer,
-                    outbox_callback,
                     resolved_entity_ids=resolved_entity_ids,
                     entity_to_unit=entity_to_unit,
                     unit_to_entity_ids=unit_to_entity_ids,
                     semantic_ann_links=semantic_ann_links,
+                    outbox_callback=outbox_callback,
                 )
 
             # ================================================================
@@ -1136,12 +1104,12 @@ async def _streaming_retain_batch(
                         batch_processed,
                         config,
                         log_buffer,
-                        outbox_callback if is_last else None,
                         resolved_entity_ids=resolved_entity_ids,
                         entity_to_unit=entity_to_unit,
                         unit_to_entity_ids=unit_to_entity_ids,
                         semantic_ann_links=[],
                         skip_semantic_links=True,
+                        outbox_callback=outbox_callback if is_last else None,
                     )
 
                 logger.info(f"[streaming] Phase 2 (write txn): {time.time() - p2_start:.3f}s")
@@ -1490,11 +1458,11 @@ async def _try_delta_retain(
                     processed_facts,
                     config,
                     log_buffer,
-                    outbox_callback,
                     resolved_entity_ids=resolved_entity_ids,
                     entity_to_unit=entity_to_unit,
                     unit_to_entity_ids=unit_to_entity_ids,
                     semantic_ann_links=semantic_ann_links,
+                    outbox_callback=outbox_callback,
                 )
 
             # PHASE 3 — Best-Effort Display Data (post-transaction)

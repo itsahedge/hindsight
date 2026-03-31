@@ -147,67 +147,6 @@ async def build_entity_links(
     )
 
 
-async def process_entities_batch(
-    entity_resolver,
-    conn,
-    bank_id: str,
-    unit_ids: list[str],
-    facts: list[ProcessedFact],
-    log_buffer: list[str] = None,
-    user_entities_per_content: dict[int, list[dict]] = None,
-    entity_labels: list | None = None,
-) -> list[EntityLink]:
-    """
-    Process entities for all facts and create entity links.
-
-    This is the legacy single-connection path that runs both entity resolution
-    and link building on the same connection.  The split-transaction path
-    (resolve_entities + build_entity_links) is preferred for concurrent workloads.
-
-    This function:
-    1. Extracts entity mentions from fact texts
-    2. Merges user-provided entities with LLM-extracted entities
-    3. Resolves entity names to canonical entities
-    4. Creates entity records in the database
-    5. Returns entity links ready for insertion
-
-    Args:
-        entity_resolver: EntityResolver instance for entity resolution
-        conn: Database connection
-        bank_id: Bank identifier
-        unit_ids: List of unit IDs (same length as facts)
-        facts: List of ProcessedFact objects
-        log_buffer: Optional buffer for detailed logging
-        user_entities_per_content: Dict mapping content_index to list of user-provided entities
-
-    Returns:
-        List of EntityLink objects for batch insertion
-    """
-    if not unit_ids or not facts:
-        return []
-
-    if len(unit_ids) != len(facts):
-        raise ValueError(f"Mismatch between unit_ids ({len(unit_ids)}) and facts ({len(facts)})")
-
-    fact_texts, fact_dates, entities_per_fact = _prepare_facts_for_entity_processing(facts, user_entities_per_content)
-
-    # Use existing link_utils function for entity processing
-    entity_links = await link_utils.extract_entities_batch_optimized(
-        entity_resolver,
-        conn,
-        bank_id,
-        unit_ids,
-        fact_texts,
-        "",  # context (not used in current implementation)
-        fact_dates,
-        entities_per_fact,
-        log_buffer,  # Pass log_buffer for detailed logging
-        entity_labels=entity_labels,
-    )
-
-    return entity_links
-
-
 async def insert_entity_links_batch(conn, entity_links: list[EntityLink], bank_id: str) -> None:
     """
     Insert entity links in batch.
