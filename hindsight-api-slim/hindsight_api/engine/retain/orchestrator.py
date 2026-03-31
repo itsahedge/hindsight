@@ -68,7 +68,16 @@ from . import (
     fact_storage,
     link_creation,
 )
-from .types import ChunkMetadata, EntityLink, ExtractedFact, ProcessedFact, RetainContent, RetainContentDict
+from .types import (
+    ChunkMetadata,
+    EntityLink,
+    EntityResolutionResult,
+    ExtractedFact,
+    Phase1Result,
+    ProcessedFact,
+    RetainContent,
+    RetainContentDict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +122,7 @@ async def _pre_resolve_phase1(
     config,
     log_buffer: list[str],
     skip_semantic_ann: bool = False,
-) -> tuple[list[str], list[tuple], dict[str, list[str]], list[tuple]]:
+) -> Phase1Result:
     """
     Phase 1: Run expensive read-heavy operations on a separate connection
     OUTSIDE the write transaction.
@@ -123,10 +132,6 @@ async def _pre_resolve_phase1(
 
     Running these outside the transaction avoids holding row locks during
     slow reads, eliminating TimeoutErrors under concurrent load.
-
-    Returns:
-        Tuple of (resolved_entity_ids, entity_to_unit, unit_to_entity_ids,
-                  semantic_ann_links) where semantic_ann_links uses placeholder IDs.
     """
     from .link_utils import compute_semantic_links_ann
 
@@ -160,7 +165,14 @@ async def _pre_resolve_phase1(
                 resolve_conn, bank_id, placeholder_unit_ids, embeddings, fact_types=fact_types, log_buffer=log_buffer
             )
 
-    return resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links
+    return Phase1Result(
+        entities=EntityResolutionResult(
+            resolved_entity_ids=resolved_entity_ids,
+            entity_to_unit=entity_to_unit,
+            unit_to_entity_ids=unit_to_entity_ids,
+        ),
+        semantic_ann_links=semantic_ann_links,
+    )
 
 
 def _remap_phase1_results(
@@ -398,7 +410,6 @@ async def retain_batch(
     document_id: str | None = None,
     is_first_batch: bool = True,
     fact_type_override: str | None = None,
-    confidence_score: float | None = None,
     document_tags: list[str] | None = None,
     operation_id: str | None = None,
     schema: str | None = None,
@@ -553,7 +564,7 @@ async def retain_batch(
         # This avoids holding the write transaction open during slow reads
         # that previously caused TimeoutErrors under concurrent load.
         # ================================================================
-        resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links = await _pre_resolve_phase1(
+        phase1 = await _pre_resolve_phase1(
             pool, entity_resolver, bank_id, contents, processed_facts, config, log_buffer
         )
 
@@ -565,7 +576,6 @@ async def retain_batch(
         # If this transaction fails, nothing is committed — clean rollback.
         # Entity links for UI visualization are deferred to Phase 3.
         # ================================================================
-        entity_links = []
         async with acquire_with_retry(pool) as conn:
             async with conn.transaction():
                 # Handle document tracking
@@ -655,10 +665,10 @@ async def retain_batch(
                     processed_facts,
                     config,
                     log_buffer,
-                    resolved_entity_ids=resolved_entity_ids,
-                    entity_to_unit=entity_to_unit,
-                    unit_to_entity_ids=unit_to_entity_ids,
-                    semantic_ann_links=semantic_ann_links,
+                    resolved_entity_ids=phase1.entities.resolved_entity_ids,
+                    entity_to_unit=phase1.entities.entity_to_unit,
+                    unit_to_entity_ids=phase1.entities.unit_to_entity_ids,
+                    semantic_ann_links=phase1.semantic_ann_links,
                     outbox_callback=outbox_callback,
                 )
 
@@ -1057,7 +1067,7 @@ async def _streaming_retain_batch(
 
             # Phase 1 — Entity Resolution only (no ANN — deferred to Phase 3)
             p1_start = time.time()
-            resolved_entity_ids, entity_to_unit, unit_to_entity_ids, _ = await _pre_resolve_phase1(
+            phase1 = await _pre_resolve_phase1(
                 pool,
                 entity_resolver,
                 bank_id,
@@ -1104,9 +1114,9 @@ async def _streaming_retain_batch(
                         batch_processed,
                         config,
                         log_buffer,
-                        resolved_entity_ids=resolved_entity_ids,
-                        entity_to_unit=entity_to_unit,
-                        unit_to_entity_ids=unit_to_entity_ids,
+                        resolved_entity_ids=phase1.entities.resolved_entity_ids,
+                        entity_to_unit=phase1.entities.entity_to_unit,
+                        unit_to_entity_ids=phase1.entities.unit_to_entity_ids,
                         semantic_ann_links=[],
                         skip_semantic_links=True,
                         outbox_callback=outbox_callback if is_last else None,
@@ -1370,12 +1380,11 @@ async def _try_delta_retain(
         entity_resolver.discard_pending_stats()
 
         # PHASE 1 — Entity Resolution + Semantic ANN (separate connection, read-heavy)
-        resolved_entity_ids, entity_to_unit, unit_to_entity_ids, semantic_ann_links = await _pre_resolve_phase1(
+        phase1 = await _pre_resolve_phase1(
             pool, entity_resolver, bank_id, delta_contents, processed_facts, config, log_buffer
         )
 
         # PHASE 2 — Core Write Transaction (atomic)
-        entity_links = []
         async with acquire_with_retry(pool) as conn:
             async with conn.transaction():
                 # Update document metadata (no delete)
@@ -1458,10 +1467,10 @@ async def _try_delta_retain(
                     processed_facts,
                     config,
                     log_buffer,
-                    resolved_entity_ids=resolved_entity_ids,
-                    entity_to_unit=entity_to_unit,
-                    unit_to_entity_ids=unit_to_entity_ids,
-                    semantic_ann_links=semantic_ann_links,
+                    resolved_entity_ids=phase1.entities.resolved_entity_ids,
+                    entity_to_unit=phase1.entities.entity_to_unit,
+                    unit_to_entity_ids=phase1.entities.unit_to_entity_ids,
+                    semantic_ann_links=phase1.semantic_ann_links,
                     outbox_callback=outbox_callback,
                 )
 

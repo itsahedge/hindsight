@@ -2176,7 +2176,6 @@ class MemoryEngine(MemoryEngineInterface):
                     document_id=document_id,
                     is_first_batch=i == 1,  # Only upsert on first batch
                     fact_type_override=fact_type_override,
-                    confidence_score=confidence_score,
                     document_tags=document_tags,
                     operation_id=operation_id,
                     strategy=strategy,
@@ -2201,7 +2200,6 @@ class MemoryEngine(MemoryEngineInterface):
                 document_id=document_id,
                 is_first_batch=True,
                 fact_type_override=fact_type_override,
-                confidence_score=confidence_score,
                 document_tags=document_tags,
                 operation_id=operation_id,
                 strategy=strategy,
@@ -2253,7 +2251,6 @@ class MemoryEngine(MemoryEngineInterface):
         document_id: str | None = None,
         is_first_batch: bool = True,
         fact_type_override: str | None = None,
-        confidence_score: float | None = None,
         document_tags: list[str] | None = None,
         operation_id: str | None = None,
         outbox_callback: "Callable[[asyncpg.Connection], Awaitable[None]] | None" = None,
@@ -2274,7 +2271,6 @@ class MemoryEngine(MemoryEngineInterface):
             document_id: Optional document ID (always upserts if exists)
             is_first_batch: Whether this is the first batch (for chunked operations, only delete on first batch)
             fact_type_override: Override fact type for all facts
-            confidence_score: Confidence score for opinions
             document_tags: Tags applied to all items in this batch
 
         Returns:
@@ -2313,7 +2309,6 @@ class MemoryEngine(MemoryEngineInterface):
                 document_id=document_id,
                 is_first_batch=is_first_batch,
                 fact_type_override=fact_type_override,
-                confidence_score=confidence_score,
                 document_tags=document_tags,
                 config=resolved_config,
                 operation_id=operation_id,

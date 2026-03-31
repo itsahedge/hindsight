@@ -222,6 +222,30 @@ class ProcessedFact:
 
 
 @dataclass
+class EntityResolutionResult:
+    """
+    Result of Phase 1 entity resolution.
+
+    Contains resolved entity IDs and the mapping data needed to remap
+    placeholder unit IDs to real IDs after fact insertion in Phase 2.
+    """
+
+    resolved_entity_ids: list[str]
+    entity_to_unit: list[tuple]
+    unit_to_entity_ids: dict[str, list[str]]
+
+
+@dataclass
+class Phase1Result:
+    """
+    Full result of Phase 1 (entity resolution + optional semantic ANN).
+    """
+
+    entities: EntityResolutionResult
+    semantic_ann_links: list[tuple]
+
+
+@dataclass
 class EntityLink:
     """
     Link between two memory units through a shared entity.
