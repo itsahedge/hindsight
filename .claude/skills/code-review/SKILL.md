@@ -18,15 +18,17 @@ Read and internalize these standards before writing code. The review steps below
 - Pydantic models for request/response
 - Ruff for linting (line-length 120)
 - No Python files at project root - maintain clean directory structure
-- **Never use multi-item tuple return values** - prefer dataclass or Pydantic model for structured returns
+- **Never use multi-item tuple return values** — not even for internal/private functions. Always use a dataclass or Pydantic model. No exceptions, no "it's just two values" shortcuts. If a function returns more than one value, define a named type for it.
 
 ### Type Safety with Pydantic Models
-**NEVER use raw `dict` types for structured data.** Always use Pydantic models:
+**NEVER use raw `dict` types for structured data** — this applies to all code, including internal helpers and private functions. If the dict has known keys, it must be a dataclass or Pydantic model:
 - Use Pydantic `BaseModel` for all data structures passed between functions
+- Use `@dataclass` for lightweight internal data containers when Pydantic validation isn't needed
 - Add `@field_validator` for type coercion (e.g., ensuring datetimes are timezone-aware)
 - Avoid `dict.get()` patterns - use typed model attributes instead
 - Parse external data (JSON, API responses) into Pydantic models at the boundary
 - This catches type errors at parse time, not deep in business logic
+- The only acceptable `dict` usage is for truly dynamic/unknown keys (e.g., arbitrary metadata, JSON blobs with no fixed schema)
 
 ```python
 # BAD - error-prone dict access
@@ -71,13 +73,10 @@ results = await asyncio.gather(*tasks, return_exceptions=True)
 results = await asyncio.gather(*tasks, return_exceptions=True)
 ```
 
-<<<<<<< HEAD
 ### Branch Hygiene
 - **Always start new feature branches from `origin/main`** — rebase to ensure a clean base.
 - **Only include commits relevant to the PR/branch/feature** — no unrelated changes. If the branch contains commits that don't belong, they must be removed before merging.
 
-=======
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 ### General Principles
 - Don't add features, refactor code, or make "improvements" beyond what was asked
 - Don't add unnecessary error handling for impossible scenarios
@@ -87,7 +86,6 @@ results = await asyncio.gather(*tasks, return_exceptions=True)
 
 ## Review Steps
 
-<<<<<<< HEAD
 ### 1. Check branch hygiene
 
 - Run `git log --oneline main..HEAD` to list all commits on the branch.
@@ -99,13 +97,6 @@ results = await asyncio.gather(*tasks, return_exceptions=True)
 Run `git diff --name-only HEAD` (unstaged) and `git diff --cached --name-only` (staged) to get all changed files. If there are no local changes, diff against the base branch using `git diff main...HEAD --name-only` and `git diff main...HEAD` to review all commits on the current branch.
 
 ### 3. Run linters
-=======
-### 1. Identify changed files
-
-Run `git diff --name-only HEAD` (unstaged) and `git diff --cached --name-only` (staged) to get all changed files. If there are no local changes, diff against the base branch using `git diff main...HEAD --name-only` and `git diff main...HEAD` to review all commits on the current branch.
-
-### 2. Run linters
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 ```bash
 ./scripts/hooks/lint.sh
@@ -113,11 +104,7 @@ Run `git diff --name-only HEAD` (unstaged) and `git diff --cached --name-only` (
 
 Report any failures. Do NOT fix them yourself — just report.
 
-<<<<<<< HEAD
 ### 4. Check for dead code
-=======
-### 3. Check for dead code
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each changed Python file, check for:
 - Unused imports (Ruff should catch these, but verify)
@@ -130,23 +117,15 @@ For each changed TypeScript file, check for:
 - Unused variables or functions
 - Commented-out code
 
-<<<<<<< HEAD
 ### 5. Check type safety (Python)
-=======
-### 4. Check type safety (Python)
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each changed Python file, check for violations:
-- **No raw `dict` for structured data** — should use Pydantic models
-- **No multi-item tuple returns** — should use dataclass or Pydantic model
+- **No raw `dict` for structured data** — must use Pydantic model or dataclass, even for internal/private functions (only exception: truly dynamic/unknown keys)
+- **No multi-item tuple returns** — must use dataclass or Pydantic model, even for internal/private functions (no exceptions)
 - **Missing type hints** on function parameters and return types
 - **Missing `@field_validator`** for datetime fields that should be timezone-aware
 
-<<<<<<< HEAD
 ### 6. Check for missing tests
-=======
-### 5. Check for missing tests
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each new or significantly changed function/endpoint/class:
 - Check if there is a corresponding test addition or update
@@ -156,33 +135,29 @@ For each new or significantly changed function/endpoint/class:
 
 Flag any new logic that lacks test coverage.
 
-<<<<<<< HEAD
 ### 7. Check API consistency
-=======
-### 6. Check API consistency
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 If any files in `hindsight-api-slim/hindsight_api/api/` were changed:
 - Were the OpenAPI specs regenerated? (`./scripts/generate-openapi.sh`)
 - Were the client SDKs regenerated? (`./scripts/generate-clients.sh`)
 - Were the control plane proxy routes updated? (`hindsight-control-plane/src/app/api/`)
 
-<<<<<<< HEAD
 ### 8. Check code comments
-=======
-### 7. Check code comments
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 
 For each non-trivial change:
 - **New non-obvious logic** — is there a comment explaining the reasoning?
 - **Changed approach** — does the comment include what was done before and why it changed?
 - **Stale comments** — do existing comments near the changed code still accurately describe the behavior?
 
-<<<<<<< HEAD
-### 9. Review against other coding standards
-=======
-### 8. Review against other coding standards
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
+### 9. Check integration completeness
+
+If any files in `hindsight-integrations/` were added or changed, verify:
+- **Tests exist** — the integration must have tests that simulate/exercise the external framework (not just pure unit tests of helpers). Check for a `tests/` directory with meaningful test files.
+- **CI job exists** — check `.github/workflows/test.yml` for a corresponding `test-<name>-integration` job. If missing, flag it.
+- **Release process** — check that the integration name is in the `VALID_INTEGRATIONS` array in `scripts/release-integration.sh`. If missing, flag it.
+- **Code standards** — the integration code must follow all Python style rules (type hints, no raw dicts, no tuple returns, etc.).
+
+### 10. Review against other coding standards
 
 Check the diff for violations of the standards listed above:
 - Python files at project root (not allowed)
@@ -194,23 +169,18 @@ Check the diff for violations of the standards listed above:
 - Premature abstractions or speculative helpers
 - Backwards-compatibility hacks (unused vars, re-exports, "removed" comments)
 
-<<<<<<< HEAD
-### 10. Report findings
-=======
-### 9. Report findings
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
+### 11. Report findings
 
 Present a clear summary organized by severity:
 
 **Must fix** — issues that will break CI or violate hard project rules:
-<<<<<<< HEAD
 - Unrelated commits on the branch
-=======
->>>>>>> 7f4f1a82 (fix: move skill to directory structure for Claude Code discovery)
 - Lint failures
 - Missing type hints on public functions
-- Raw dict usage for structured data
+- Raw dict usage for structured data (including internal code)
+- Multi-item tuple returns (including internal code)
 - Missing tests for new endpoints
+- New integration missing tests, CI job, or release-integration.sh entry
 
 **Should fix** — issues that hurt code quality:
 - Dead code / unused imports missed by linter
