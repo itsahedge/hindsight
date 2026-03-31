@@ -48,6 +48,9 @@ jobs:
       integrations-llamaindex: ${{ steps.filter.outputs.integrations-llamaindex }}
       dev: ${{ steps.filter.outputs.dev }}
       ci: ${{ steps.filter.outputs.ci }}
+      # Secrets are available for internal PRs, pull_request_target, and workflow_dispatch.
+      # Fork PRs via pull_request event do NOT have access to secrets.
+      has_secrets: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
     steps:
     - uses: actions/checkout@v6
       with:
@@ -446,11 +449,12 @@ jobs:
   test-rust-cli:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.cli == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -597,12 +601,13 @@ jobs:
   build-docker-images:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.docker == 'true' ||
       needs.detect-changes.outputs.control-plane == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     name: Build Docker (${{ matrix.name }})
     runs-on: ubuntu-latest
     strategy:
@@ -690,10 +695,11 @@ jobs:
   test-api:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -766,11 +772,12 @@ jobs:
   test-python-client:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.clients-python == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -877,11 +884,12 @@ jobs:
   test-typescript-client:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.clients-ts == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -993,11 +1001,12 @@ jobs:
   test-typescript-client-deno:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.clients-ts == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -1147,11 +1156,12 @@ jobs:
   test-rust-client:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.clients-rust == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -1262,11 +1272,12 @@ jobs:
   test-go-client:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.clients-go == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -1375,12 +1386,13 @@ jobs:
   test-openclaw-integration:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.integrations-openclaw == 'true' ||
       needs.detect-changes.outputs.embed == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -1492,11 +1504,12 @@ jobs:
   test-integration:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.integration-tests == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -1820,10 +1833,11 @@ jobs:
   test-pip-slim:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -1888,11 +1902,12 @@ jobs:
   test-embed:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.embed == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -1950,11 +1965,12 @@ jobs:
   test-hindsight-all:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.hindsight-all == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
@@ -2034,7 +2050,8 @@ jobs:
   test-doc-examples:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.clients-ts == 'true' ||
@@ -2042,7 +2059,7 @@ jobs:
       needs.detect-changes.outputs.clients-go == 'true' ||
       needs.detect-changes.outputs.cli == 'true' ||
       needs.detect-changes.outputs.docs == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -2186,11 +2203,12 @@ jobs:
   test-upgrade:
     needs: [detect-changes]
     if: >-
-      (github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
+      needs.detect-changes.outputs.has_secrets == 'true' &&
+      ((github.event_name == 'pull_request_target' && github.event.label.name == 'safe-to-test') ||
       github.event_name == 'workflow_dispatch' ||
       needs.detect-changes.outputs.core == 'true' ||
       needs.detect-changes.outputs.dev == 'true' ||
-      needs.detect-changes.outputs.ci == 'true'
+      needs.detect-changes.outputs.ci == 'true')
     runs-on: ubuntu-latest
     env:
       HINDSIGHT_API_LLM_PROVIDER: vertexai
