@@ -27,19 +27,19 @@ def _get_schema_prefix() -> str:
 def upgrade() -> None:
     schema = _get_schema_prefix()
     # Drop the old case-sensitive trigram index
-    op.execute(f"DROP INDEX IF EXISTS {schema}entities_canonical_name_trgm_idx")
+    op.execute(f"DROP INDEX IF EXISTS entities_canonical_name_trgm_idx")
     # Create case-insensitive trigram index on LOWER(canonical_name)
     op.execute(
-        f"CREATE INDEX IF NOT EXISTS {schema}entities_canonical_name_lower_trgm_idx "
+        f"CREATE INDEX IF NOT EXISTS entities_canonical_name_lower_trgm_idx "
         f"ON {schema}entities USING GIN (LOWER(canonical_name) gin_trgm_ops)"
     )
 
 
 def downgrade() -> None:
+    op.execute(f"DROP INDEX IF EXISTS entities_canonical_name_lower_trgm_idx")
     schema = _get_schema_prefix()
-    op.execute(f"DROP INDEX IF EXISTS {schema}entities_canonical_name_lower_trgm_idx")
     # Restore original case-sensitive index
     op.execute(
-        f"CREATE INDEX IF NOT EXISTS {schema}entities_canonical_name_trgm_idx "
+        f"CREATE INDEX IF NOT EXISTS entities_canonical_name_trgm_idx "
         f"ON {schema}entities USING GIN (canonical_name gin_trgm_ops)"
     )
