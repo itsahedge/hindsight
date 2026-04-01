@@ -216,6 +216,13 @@ export class ControlPlaneClient {
   }
 
   /**
+   * Export a bank as a template manifest
+   */
+  async exportBankTemplate(bankId: string) {
+    return this.fetchApi<Record<string, unknown>>(`/api/banks/${bankId}/export`);
+  }
+
+  /**
    * Recall memories
    */
   async recall(params: {
