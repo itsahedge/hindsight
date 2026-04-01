@@ -8,10 +8,6 @@ description: "Add long-term memory to Hermes Agent with Hindsight. Automatically
 
 Persistent long-term memory for [Hermes Agent](https://github.com/NousResearch/hermes-agent) using [Hindsight](https://vectorize.io/hindsight). Automatically recalls relevant context before every LLM call and retains conversations for future sessions — plus explicit retain/recall/reflect tools.
 
-:::note
-This page reflects the memory provider architecture introduced in [hermes-agent PR #4154](https://github.com/NousResearch/hermes-agent/pull/4154). If you're on an older version, see [Legacy Setup](#legacy-setup) below.
-:::
-
 ## Quick Start
 
 ```bash
@@ -167,28 +163,3 @@ curl http://localhost:9077/health
 
 **Recall returning no memories**: Memories need at least one retain cycle. Try storing a fact first, then asking about it in a new session.
 
----
-
-## Legacy Setup
-
-For hermes-agent versions before [PR #4154](https://github.com/NousResearch/hermes-agent/pull/4154), install and configure the plugin manually:
-
-```bash
-# 1. Install the plugin into Hermes's Python environment
-uv pip install hindsight-hermes --python $HOME/.hermes/hermes-agent/venv/bin/python
-
-# 2. Configure
-mkdir -p ~/.hindsight
-cat > ~/.hindsight/hermes.json << 'EOF'
-{
-  "hindsightApiUrl": "http://localhost:9077",
-  "bankId": "hermes"
-}
-EOF
-
-# 3. Disable Hermes's built-in memory tool to avoid conflicts
-hermes tools disable memory
-
-# 4. Start Hermes
-hermes
-```
