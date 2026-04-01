@@ -1671,6 +1671,20 @@ class BankTemplateConfig(BaseModel):
         return {k: v for k, v in self.model_dump().items() if v is not None}
 
 
+class BankTemplateDirective(BaseModel):
+    """A directive definition within a bank template manifest.
+
+    Directives are matched by name on re-import: existing directives
+    with the same name are updated, new ones are created.
+    """
+
+    name: str = Field(description="Human-readable name for the directive (used as match key on re-import)")
+    content: str = Field(description="The directive text to inject into prompts")
+    priority: int = Field(default=0, description="Higher priority directives are injected first")
+    is_active: bool = Field(default=True, description="Whether this directive is active")
+    tags: list[str] = FieldWithDefault(list, description="Tags for filtering")
+
+
 class BankTemplateManifest(BaseModel):
     """A bank template manifest for import/export.
 
@@ -1697,6 +1711,13 @@ class BankTemplateManifest(BaseModel):
                         "trigger": {"refresh_after_consolidation": True},
                     }
                 ],
+                "directives": [
+                    {
+                        "name": "Always be empathetic",
+                        "content": "Always respond with empathy and understanding.",
+                        "priority": 10,
+                    }
+                ],
             }
         }
     )
@@ -1708,6 +1729,9 @@ class BankTemplateManifest(BaseModel):
     )
     mental_models: list[BankTemplateMentalModel] | None = Field(
         default=None, description="Mental models to create or update (matched by id). Omit to leave unchanged."
+    )
+    directives: list[BankTemplateDirective] | None = Field(
+        default=None, description="Directives to create or update (matched by name). Omit to leave unchanged."
     )
 
     @field_validator("version")
@@ -1740,6 +1764,20 @@ class BankTemplateManifest(BaseModel):
             raise ValueError(f"Duplicate mental model ids: {sorted(set(duplicates))}")
         return v
 
+    @field_validator("directives")
+    @classmethod
+    def validate_unique_directive_names(
+        cls,
+        v: list[BankTemplateDirective] | None,
+    ) -> list[BankTemplateDirective] | None:
+        if v is None:
+            return v
+        names = [d.name for d in v]
+        duplicates = [n for n in names if names.count(n) > 1]
+        if duplicates:
+            raise ValueError(f"Duplicate directive names: {sorted(set(duplicates))}")
+        return v
+
 
 class BankTemplateImportResponse(BaseModel):
     """Response model for the bank template import endpoint."""
@@ -1748,6 +1786,8 @@ class BankTemplateImportResponse(BaseModel):
     config_applied: bool = Field(description="Whether bank config was updated")
     mental_models_created: list[str] = FieldWithDefault(list, description="IDs of newly created mental models")
     mental_models_updated: list[str] = FieldWithDefault(list, description="IDs of updated mental models")
+    directives_created: list[str] = FieldWithDefault(list, description="Names of newly created directives")
+    directives_updated: list[str] = FieldWithDefault(list, description="Names of updated directives")
     operation_ids: list[str] = FieldWithDefault(
         list, description="Operation IDs for mental model content generation (async)"
     )
@@ -4347,15 +4387,21 @@ def _register_routes(app: FastAPI):
                     errors.append(f"mental_models[{i}].name: must not be empty")
                 if not mm.source_query.strip():
                     errors.append(f"mental_models[{i}].source_query: must not be empty")
+        if manifest.directives:
+            for i, d in enumerate(manifest.directives):
+                if not d.name.strip():
+                    errors.append(f"directives[{i}].name: must not be empty")
+                if not d.content.strip():
+                    errors.append(f"directives[{i}].content: must not be empty")
         return errors
 
     @app.post(
         "/v1/default/banks/{bank_id}/import",
         response_model=BankTemplateImportResponse,
         summary="Import bank template",
-        description="Import a bank template manifest to create or update a bank's configuration and mental models. "
-        "If the bank does not exist it is created. Config fields are applied as per-bank overrides. "
-        "Mental models are matched by id — existing ones are updated, new ones are created. "
+        description="Import a bank template manifest to create or update a bank's configuration, mental models, "
+        "and directives. If the bank does not exist it is created. Config fields are applied as per-bank overrides. "
+        "Mental models are matched by id, directives by name — existing ones are updated, new ones are created. "
         "Use dry_run=true to validate the manifest without applying changes.",
         operation_id="import_bank_template",
         tags=["Bank Templates"],
@@ -4381,6 +4427,7 @@ def _register_routes(app: FastAPI):
                     bank_id=bank_id,
                     config_applied=body.bank is not None,
                     mental_models_created=[m.id for m in (body.mental_models or [])],
+                    directives_created=[d.name for d in (body.directives or [])],
                     dry_run=True,
                 )
 
@@ -4445,11 +4492,47 @@ def _register_routes(app: FastAPI):
                         operation_ids.append(result["operation_id"])
                         created_ids.append(mm.id)
 
+            directives_created: list[str] = []
+            directives_updated: list[str] = []
+
+            if body.directives:
+                # Fetch existing directives to decide create vs update (matched by name)
+                existing_directives = await app.state.memory.list_directives(
+                    bank_id=bank_id, active_only=False, request_context=request_context
+                )
+                existing_by_name = {d["name"]: d for d in existing_directives}
+
+                for directive in body.directives:
+                    if directive.name in existing_by_name:
+                        await app.state.memory.update_directive(
+                            bank_id=bank_id,
+                            directive_id=existing_by_name[directive.name]["id"],
+                            content=directive.content,
+                            priority=directive.priority,
+                            is_active=directive.is_active,
+                            tags=directive.tags if directive.tags else None,
+                            request_context=request_context,
+                        )
+                        directives_updated.append(directive.name)
+                    else:
+                        await app.state.memory.create_directive(
+                            bank_id=bank_id,
+                            name=directive.name,
+                            content=directive.content,
+                            priority=directive.priority,
+                            is_active=directive.is_active,
+                            tags=directive.tags if directive.tags else None,
+                            request_context=request_context,
+                        )
+                        directives_created.append(directive.name)
+
             return BankTemplateImportResponse(
                 bank_id=bank_id,
                 config_applied=config_applied,
                 mental_models_created=created_ids,
                 mental_models_updated=updated_ids,
+                directives_created=directives_created,
+                directives_updated=directives_updated,
                 operation_ids=operation_ids,
                 dry_run=False,
             )
@@ -4470,7 +4553,7 @@ def _register_routes(app: FastAPI):
         "/v1/default/banks/{bank_id}/export",
         response_model=BankTemplateManifest,
         summary="Export bank template",
-        description="Export a bank's current configuration and mental models as a template manifest. "
+        description="Export a bank's current configuration, mental models, and directives as a template manifest. "
         "The exported manifest can be imported into another bank to replicate the setup.",
         operation_id="export_bank_template",
         tags=["Bank Templates"],
@@ -4515,11 +4598,28 @@ def _register_routes(app: FastAPI):
                     )
                 )
 
+            # Get directives
+            directives_raw = await app.state.memory.list_directives(
+                bank_id=bank_id, active_only=False, request_context=request_context
+            )
+            template_directives: list[BankTemplateDirective] = []
+            for d in directives_raw:
+                template_directives.append(
+                    BankTemplateDirective(
+                        name=d["name"],
+                        content=d["content"],
+                        priority=d.get("priority", 0),
+                        is_active=d.get("is_active", True),
+                        tags=d.get("tags", []),
+                    )
+                )
+
             return BankTemplateManifest(
                 version=BANK_TEMPLATE_CURRENT_VERSION,
                 description=f"Exported from bank '{bank_id}'",
                 bank=bank_config,
                 mental_models=template_mental_models if template_mental_models else None,
+                directives=template_directives if template_directives else None,
             )
         except OperationValidationError as e:
             raise HTTPException(status_code=e.status_code, detail=e.reason)

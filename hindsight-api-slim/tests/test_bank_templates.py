@@ -50,6 +50,18 @@ def sample_template():
                 "source_query": "What are the common issues?",
             },
         ],
+        "directives": [
+            {
+                "name": "Be concise",
+                "content": "Always respond concisely.",
+                "priority": 10,
+            },
+            {
+                "name": "Use examples",
+                "content": "Include examples when explaining concepts.",
+                "tags": ["style"],
+            },
+        ],
     }
 
 
@@ -68,6 +80,7 @@ class TestImportValidation:
         assert data["dry_run"] is True
         assert data["config_applied"] is True
         assert set(data["mental_models_created"]) == {"test-model-one", "test-model-two"}
+        assert set(data["directives_created"]) == {"Be concise", "Use examples"}
 
     @pytest.mark.asyncio
     async def test_import_invalid_version(self, api_client, bank_id):
@@ -123,6 +136,21 @@ class TestImportValidation:
         assert resp.status_code == 422  # Pydantic validation
 
     @pytest.mark.asyncio
+    async def test_import_duplicate_directive_names(self, api_client, bank_id):
+        """Reject manifest with duplicate directive names."""
+        resp = await api_client.post(
+            f"/v1/default/banks/{bank_id}/import",
+            json={
+                "version": "1",
+                "directives": [
+                    {"name": "Same Name", "content": "First"},
+                    {"name": "Same Name", "content": "Second"},
+                ],
+            },
+        )
+        assert resp.status_code == 422  # Pydantic validation
+
+    @pytest.mark.asyncio
     async def test_import_missing_mental_model_id(self, api_client, bank_id):
         """Mental model without id is rejected."""
         resp = await api_client.post(
@@ -161,6 +189,7 @@ class TestImportValidation:
         data = resp.json()
         assert data["config_applied"] is False
         assert data["mental_models_created"] == []
+        assert data["directives_created"] == []
 
     @pytest.mark.asyncio
     async def test_import_empty_mental_model_name(self, api_client, bank_id):
@@ -177,13 +206,28 @@ class TestImportValidation:
         assert resp.status_code == 400
         assert "name" in resp.json()["detail"]
 
+    @pytest.mark.asyncio
+    async def test_import_empty_directive_content(self, api_client, bank_id):
+        """Semantic validation catches empty directive content."""
+        resp = await api_client.post(
+            f"/v1/default/banks/{bank_id}/import",
+            json={
+                "version": "1",
+                "directives": [
+                    {"name": "Bad Directive", "content": "  "},
+                ],
+            },
+        )
+        assert resp.status_code == 400
+        assert "content" in resp.json()["detail"]
+
 
 class TestImportApply:
-    """Test that import actually applies config and creates mental models."""
+    """Test that import actually applies config, mental models, and directives."""
 
     @pytest.mark.asyncio
     async def test_import_applies_config(self, api_client, bank_id):
-        """Import with bank config applies config overrides."""
+        """Import with bank config applies config overrides on a new bank."""
         resp = await api_client.post(
             f"/v1/default/banks/{bank_id}/import",
             json={
@@ -205,6 +249,43 @@ class TestImportApply:
         config = config_resp.json()
         assert config["overrides"]["reflect_mission"] == "Imported mission"
         assert config["overrides"]["disposition_empathy"] == 4
+
+    @pytest.mark.asyncio
+    async def test_import_into_existing_bank(self, api_client, bank_id):
+        """Import into an already-existing bank applies config and creates resources."""
+        # Pre-create the bank
+        await api_client.put(f"/v1/default/banks/{bank_id}", json={})
+
+        resp = await api_client.post(
+            f"/v1/default/banks/{bank_id}/import",
+            json={
+                "version": "1",
+                "bank": {"reflect_mission": "Existing bank mission"},
+                "mental_models": [
+                    {"id": "existing-bank-mm", "name": "MM", "source_query": "q"},
+                ],
+                "directives": [
+                    {"name": "Existing Bank Directive", "content": "Be helpful"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["config_applied"] is True
+        assert "existing-bank-mm" in data["mental_models_created"]
+        assert "Existing Bank Directive" in data["directives_created"]
+
+        # Verify everything exists
+        config_resp = await api_client.get(f"/v1/default/banks/{bank_id}/config")
+        assert config_resp.json()["overrides"]["reflect_mission"] == "Existing bank mission"
+
+        mm_resp = await api_client.get(f"/v1/default/banks/{bank_id}/mental-models/existing-bank-mm")
+        assert mm_resp.status_code == 200
+
+        dir_resp = await api_client.get(f"/v1/default/banks/{bank_id}/directives")
+        assert dir_resp.status_code == 200
+        names = [d["name"] for d in dir_resp.json()["items"]]
+        assert "Existing Bank Directive" in names
 
     @pytest.mark.asyncio
     async def test_import_creates_mental_models(self, api_client, bank_id):
@@ -281,8 +362,76 @@ class TestImportApply:
         assert mm["source_query"] == "Updated query"
 
     @pytest.mark.asyncio
+    async def test_import_creates_directives(self, api_client, bank_id):
+        """Import creates directives."""
+        resp = await api_client.post(
+            f"/v1/default/banks/{bank_id}/import",
+            json={
+                "version": "1",
+                "directives": [
+                    {
+                        "name": "Test Directive",
+                        "content": "Always be helpful and precise.",
+                        "priority": 5,
+                        "tags": ["test"],
+                    },
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "Test Directive" in data["directives_created"]
+        assert data["directives_updated"] == []
+
+        # Verify directive exists
+        dir_resp = await api_client.get(f"/v1/default/banks/{bank_id}/directives")
+        assert dir_resp.status_code == 200
+        items = dir_resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "Test Directive"
+        assert items[0]["content"] == "Always be helpful and precise."
+        assert items[0]["priority"] == 5
+        assert items[0]["tags"] == ["test"]
+
+    @pytest.mark.asyncio
+    async def test_import_updates_existing_directives(self, api_client, bank_id):
+        """Re-importing updates existing directives matched by name."""
+        # First import
+        await api_client.post(
+            f"/v1/default/banks/{bank_id}/import",
+            json={
+                "version": "1",
+                "directives": [
+                    {"name": "Reusable Directive", "content": "Original content", "priority": 1},
+                ],
+            },
+        )
+
+        # Second import with same name but different content
+        resp = await api_client.post(
+            f"/v1/default/banks/{bank_id}/import",
+            json={
+                "version": "1",
+                "directives": [
+                    {"name": "Reusable Directive", "content": "Updated content", "priority": 10},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "Reusable Directive" in data["directives_updated"]
+        assert data["directives_created"] == []
+
+        # Verify update
+        dir_resp = await api_client.get(f"/v1/default/banks/{bank_id}/directives")
+        items = dir_resp.json()["items"]
+        directive = [d for d in items if d["name"] == "Reusable Directive"][0]
+        assert directive["content"] == "Updated content"
+        assert directive["priority"] == 10
+
+    @pytest.mark.asyncio
     async def test_import_config_only(self, api_client, bank_id):
-        """Import with only bank config (no mental_models) works."""
+        """Import with only bank config (no mental_models or directives) works."""
         resp = await api_client.post(
             f"/v1/default/banks/{bank_id}/import",
             json={
@@ -294,11 +443,12 @@ class TestImportApply:
         data = resp.json()
         assert data["config_applied"] is True
         assert data["mental_models_created"] == []
+        assert data["directives_created"] == []
         assert data["operation_ids"] == []
 
     @pytest.mark.asyncio
     async def test_import_mental_models_only(self, api_client, bank_id):
-        """Import with only mental_models (no bank config) works."""
+        """Import with only mental_models works."""
         resp = await api_client.post(
             f"/v1/default/banks/{bank_id}/import",
             json={
@@ -312,6 +462,25 @@ class TestImportApply:
         data = resp.json()
         assert data["config_applied"] is False
         assert "mm-only" in data["mental_models_created"]
+        assert data["directives_created"] == []
+
+    @pytest.mark.asyncio
+    async def test_import_directives_only(self, api_client, bank_id):
+        """Import with only directives works."""
+        resp = await api_client.post(
+            f"/v1/default/banks/{bank_id}/import",
+            json={
+                "version": "1",
+                "directives": [
+                    {"name": "Dir Only", "content": "test directive"},
+                ],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["config_applied"] is False
+        assert data["mental_models_created"] == []
+        assert "Dir Only" in data["directives_created"]
 
 
 class TestExport:
@@ -329,10 +498,11 @@ class TestExport:
         assert data["version"] == "1"
         assert data["bank"] is None
         assert data["mental_models"] is None
+        assert data["directives"] is None
 
     @pytest.mark.asyncio
     async def test_export_after_import(self, api_client, bank_id):
-        """Export after import returns the imported config and mental models."""
+        """Export after import returns the imported config, mental models, and directives."""
         template = {
             "version": "1",
             "bank": {
@@ -346,6 +516,14 @@ class TestExport:
                     "source_query": "What happened?",
                     "tags": ["roundtrip"],
                     "max_tokens": 512,
+                },
+            ],
+            "directives": [
+                {
+                    "name": "Roundtrip Directive",
+                    "content": "Be thorough.",
+                    "priority": 3,
+                    "tags": ["roundtrip"],
                 },
             ],
         }
@@ -371,6 +549,13 @@ class TestExport:
         assert mm["tags"] == ["roundtrip"]
         assert mm["max_tokens"] == 512
 
+        assert len(data["directives"]) == 1
+        d = data["directives"][0]
+        assert d["name"] == "Roundtrip Directive"
+        assert d["content"] == "Be thorough."
+        assert d["priority"] == 3
+        assert d["tags"] == ["roundtrip"]
+
     @pytest.mark.asyncio
     async def test_export_reimport_roundtrip(self, api_client, bank_id):
         """Exported manifest can be re-imported into a new bank."""
@@ -382,6 +567,9 @@ class TestExport:
                 "bank": {"retain_mission": "Roundtrip test"},
                 "mental_models": [
                     {"id": "rt-mm", "name": "RT Model", "source_query": "test query"},
+                ],
+                "directives": [
+                    {"name": "RT Directive", "content": "test directive"},
                 ],
             },
         )
@@ -401,6 +589,7 @@ class TestExport:
         data = import_resp.json()
         assert data["config_applied"] is True
         assert "rt-mm" in data["mental_models_created"]
+        assert "RT Directive" in data["directives_created"]
 
     @pytest.mark.asyncio
     async def test_export_nonexistent_bank(self, api_client):
