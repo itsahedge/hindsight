@@ -185,6 +185,29 @@ curl -X POST http://localhost:8888/v1/default/banks/new-bank/import \
   -d @template.json
 ```
 
+## JSON Schema
+
+The manifest format is defined by a JSON Schema that you can use to validate templates before importing. The schema is auto-generated from the Pydantic models and always matches the server's current version.
+
+**API endpoint** — fetch the live schema from your server:
+
+```bash
+curl http://localhost:8888/v1/default/bank-template-schema
+```
+
+**Static schema** — also available as a static file: [bank-template-schema.json](/bank-template-schema.json)
+
+You can validate a template locally with any JSON Schema validator:
+
+```bash
+# Using Python jsonschema
+pip install jsonschema
+python -m jsonschema --instance template.json bank-template-schema.json
+
+# Using Node.js ajv-cli
+npx ajv-cli validate -s bank-template-schema.json -d template.json
+```
+
 ## Control Plane
 
 The control plane bank creation dialog includes an optional "Template" textarea. Paste a manifest JSON to pre-configure the bank on creation.

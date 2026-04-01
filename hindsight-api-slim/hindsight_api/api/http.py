@@ -4632,6 +4632,18 @@ def _register_routes(app: FastAPI):
             logger.error(f"Error in GET /v1/default/banks/{bank_id}/export: {error_detail}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    @app.get(
+        "/v1/default/bank-template-schema",
+        summary="Get bank template JSON Schema",
+        description="Returns the JSON Schema for the bank template manifest format. "
+        "Use this to validate template manifests before importing.",
+        operation_id="get_bank_template_schema",
+        tags=["Bank Templates"],
+    )
+    async def api_get_bank_template_schema():
+        """Return the JSON Schema for the bank template manifest."""
+        return BankTemplateManifest.model_json_schema()
+
     @app.delete(
         "/v1/default/banks/{bank_id}/observations",
         response_model=DeleteResponse,
