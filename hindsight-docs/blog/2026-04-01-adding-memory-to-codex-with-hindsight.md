@@ -38,7 +38,7 @@ Every session starts from nothing. Codex doesn't know which libraries your proje
 
 **Full-session upsert.** The transcript is stored using the session ID as the document key. If a session is retained multiple times (in chunked mode), the content is upserted rather than duplicated. No accumulation of near-identical entries.
 
-**Zero dependencies.** The plugin is three Python stdlib scripts. No pip install, no virtualenv, no version conflicts.
+**Minimal dependencies.** The hook scripts use Python stdlib only — no pip install, no virtualenv, no version conflicts. Local daemon mode requires [`uvx`](https://docs.astral.sh/uv/) to run `hindsight-embed`; Cloud mode has no local prerequisites at all.
 
 ```
 ┌──────────────┐     UserPromptSubmit      ┌─────────────────────────┐
@@ -158,7 +158,7 @@ A few things worth knowing before you commit.
 
 **Recall adds latency.** Every prompt triggers a Hindsight query before Codex sees it. In practice this is 100–300ms with Hindsight Cloud on a fast connection. For interactive sessions it's imperceptible; for automated scripts it may matter. Use `"recallBudget": "low"` or `"autoRecall": false` if you need to skip it.
 
-**Retention is asynchronous.** The `retain.py` hook fires asynchronously so it doesn't block your session from exiting. Facts extracted from a session won't appear in recall until the next session.
+**Retention is asynchronous.** The `retain.py` hook fires asynchronously so it doesn't block your session from exiting. Facts are typically available within seconds of retention completing, but timing depends on server load — they may appear sooner or later than the next session.
 
 **Extraction quality depends on conversation quality.** Hindsight extracts facts from what's actually in the transcript. If you work through a problem entirely in file edits without narrating what you're doing, there may be little for the extraction model to work with. Brief explanations in your prompts help.
 
