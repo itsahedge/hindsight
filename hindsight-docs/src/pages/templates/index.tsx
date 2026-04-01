@@ -107,9 +107,9 @@ export default function TemplateGallery(): React.ReactElement {
   }, [templates, search, selectedCategory]);
 
   return (
-    <Layout title="Template Gallery" description="Pre-built bank templates for common use cases">
+    <Layout title="Bank Templates" description="Pre-built bank templates for common use cases">
       <div className={styles.heroSection}>
-        <h1 className={styles.heroTitle}>Template Gallery</h1>
+        <h1 className={styles.heroTitle}>Bank Templates</h1>
         <p className={styles.heroSubtitle}>
           Pre-built bank templates to get started fast. Browse, preview, and import into your Hindsight banks.
         </p>

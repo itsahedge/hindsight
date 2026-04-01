@@ -351,7 +351,7 @@ const sidebars: SidebarsConfig = {
         {
           type: 'link',
           href: '/templates',
-          label: 'Template Gallery',
+          label: 'Bank Templates',
           customProps: { icon: 'lu-layout-template', iconAfter: 'lu-arrow-up-right' },
         },
         {

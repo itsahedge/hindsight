@@ -215,12 +215,6 @@ const config: Config = {
           className: 'navbar-item-integrations',
         },
         {
-          to: '/templates',
-          position: 'left',
-          label: 'Templates',
-          className: 'navbar-item-templates',
-        },
-        {
           to: '/changelog',
           position: 'left',
           label: 'Changelog',
