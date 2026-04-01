@@ -49,6 +49,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 function BankSelectorInner() {
@@ -61,6 +62,7 @@ function BankSelectorInner() {
   const [newBankId, setNewBankId] = React.useState("");
   const [isCreating, setIsCreating] = React.useState(false);
   const [createError, setCreateError] = React.useState<string | null>(null);
+  const [useTemplate, setUseTemplate] = React.useState(false);
   const [templateJson, setTemplateJson] = React.useState("");
   const [templateError, setTemplateError] = React.useState<string | null>(null);
 
@@ -550,30 +552,54 @@ function BankSelectorInner() {
                 value={newBankId}
                 onChange={(e) => setNewBankId(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && !isCreating && !templateJson.trim()) {
+                  if (e.key === "Enter" && !isCreating && !useTemplate) {
                     handleCreateBank();
                   }
                 }}
                 autoFocus
               />
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Template (optional)
-                </label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  Paste a bank template manifest JSON to pre-configure the bank with settings and
-                  mental models.
-                </p>
-                <Textarea
-                  placeholder='{"version": "1", "bank": {...}, "mental_models": [...]}'
-                  value={templateJson}
-                  onChange={(e) => {
-                    setTemplateJson(e.target.value);
-                    setTemplateError(null);
-                  }}
-                  className="font-mono text-xs min-h-[120px]"
-                />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={useTemplate}
+                    onCheckedChange={(checked) => {
+                      setUseTemplate(checked);
+                      if (!checked) {
+                        setTemplateJson("");
+                        setTemplateError(null);
+                      }
+                    }}
+                  />
+                  <label className="text-sm font-medium">Import from template</label>
+                </div>
+                {useTemplate && (
+                  <a
+                    href="https://hindsight.vectorize.io/templates"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Browse templates &rarr;
+                  </a>
+                )}
               </div>
+              {useTemplate && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Paste a template manifest JSON to pre-configure the bank with settings, mental
+                    models, and directives.
+                  </p>
+                  <Textarea
+                    placeholder='{"version": "1", "bank": {...}, "mental_models": [...]}'
+                    value={templateJson}
+                    onChange={(e) => {
+                      setTemplateJson(e.target.value);
+                      setTemplateError(null);
+                    }}
+                    className="font-mono text-xs min-h-[120px]"
+                  />
+                </div>
+              )}
               {templateError && (
                 <p className="text-sm text-destructive whitespace-pre-wrap">{templateError}</p>
               )}
@@ -585,6 +611,7 @@ function BankSelectorInner() {
                 onClick={() => {
                   setCreateDialogOpen(false);
                   setNewBankId("");
+                  setUseTemplate(false);
                   setTemplateJson("");
                   setCreateError(null);
                   setTemplateError(null);
