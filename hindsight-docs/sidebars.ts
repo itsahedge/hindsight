@@ -350,6 +350,12 @@ const sidebars: SidebarsConfig = {
       items: [
         {
           type: 'link',
+          href: '/templates',
+          label: 'Template Gallery',
+          customProps: { icon: 'lu-layout-template', iconAfter: 'lu-arrow-up-right' },
+        },
+        {
+          type: 'link',
           href: '/best-practices',
           label: 'Best Practices',
           customProps: { icon: 'lu-star', iconAfter: 'lu-arrow-up-right' },
