@@ -101,12 +101,69 @@ class DaemonEmbedManager(EmbedManager):
         api_version = os.getenv("HINDSIGHT_EMBED_API_VERSION", __version__)
         return ["uvx", f"hindsight-api@{api_version}"]
 
+    def _clear_port(self, port: int) -> bool:
+        """
+        Ensure the port is free before starting a daemon.
+
+        If the port is occupied by a hindsight daemon, stop it gracefully.
+        If occupied by something else, return False.
+
+        Returns:
+            True if port is free (or was freed), False if occupied by non-hindsight process.
+        """
+        # Check if anything is listening on the port
+        try:
+            result = subprocess.run(
+                ["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                return True  # Port is free
+            pid = int(result.stdout.strip().split()[0])
+        except (subprocess.TimeoutExpired, ValueError, OSError, FileNotFoundError):
+            return True  # Can't check, assume free
+
+        # Port is occupied — check if it's a hindsight daemon
+        try:
+            with httpx.Client(timeout=2) as client:
+                response = client.get(f"http://127.0.0.1:{port}/health")
+                if response.status_code != 200:
+                    logger.warning(f"Port {port} is in use by another process (PID {pid})")
+                    return False
+        except Exception:
+            logger.warning(f"Port {port} is in use by another process (PID {pid})")
+            return False
+
+        # It's a hindsight daemon — stop it
+        logger.info(f"Stopping existing daemon on port {port} (PID {pid})")
+        try:
+            os.kill(pid, 15)  # SIGTERM
+            for _ in range(50):
+                time.sleep(0.1)
+                try:
+                    os.kill(pid, 0)  # Check if still alive
+                except OSError:
+                    logger.info(f"Old daemon (PID {pid}) stopped")
+                    return True
+        except OSError:
+            return True  # Already gone
+
+        logger.warning(f"Old daemon (PID {pid}) did not stop in time")
+        return False
+
     def _start_daemon(self, config: dict, profile: str) -> bool:
         """Start the daemon in background."""
         paths = self._profile_manager.resolve_profile_paths(profile)
         profile_label = f"profile '{profile}'" if profile else "default profile"
         daemon_log = paths.log
         port = paths.port
+
+        # Ensure port is free before starting (handles stale daemons from version upgrades)
+        if not self._clear_port(port):
+            logger.error(f"Cannot start daemon: port {port} is in use by a non-hindsight process")
+            return False
 
         # Load profile's .env file and merge with provided config
         # This fixes issue #305 where profile env vars were ignored

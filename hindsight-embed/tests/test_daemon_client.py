@@ -1,13 +1,16 @@
 """Tests for daemon_client module."""
 
 import os
+import signal
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
+import httpx
 import pytest
 
 from hindsight_embed import daemon_client
+from hindsight_embed.daemon_embed_manager import DaemonEmbedManager
 
 @pytest.fixture
 def config():
@@ -177,4 +180,78 @@ class TestRunCli:
 
             # Verify exit code
             assert exit_code == 0
+
+
+class TestClearPort:
+    """Tests for DaemonEmbedManager._clear_port."""
+
+    def test_port_free(self):
+        """Port not in use — returns True immediately."""
+        manager = DaemonEmbedManager()
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(returncode=1, stdout="")
+            assert manager._clear_port(9555) is True
+
+    def test_port_occupied_by_hindsight_stops_it(self):
+        """Port occupied by a hindsight daemon — kills it and returns True."""
+        manager = DaemonEmbedManager()
+        with (
+            patch("subprocess.run") as mock_lsof,
+            patch("httpx.Client") as mock_httpx_cls,
+            patch("os.kill") as mock_kill,
+        ):
+            # lsof finds PID 12345
+            mock_lsof.return_value = Mock(returncode=0, stdout="12345\n")
+            # /health returns 200 (it's hindsight)
+            mock_client = MagicMock()
+            mock_client.__enter__ = Mock(return_value=mock_client)
+            mock_client.__exit__ = Mock(return_value=False)
+            mock_client.get.return_value = Mock(status_code=200)
+            mock_httpx_cls.return_value = mock_client
+            # Process dies after SIGTERM
+            mock_kill.side_effect = [None, OSError("No such process")]
+
+            assert manager._clear_port(9555) is True
+            mock_kill.assert_any_call(12345, 15)  # SIGTERM
+
+    def test_port_occupied_by_non_hindsight_returns_false(self):
+        """Port occupied by non-hindsight process — returns False."""
+        manager = DaemonEmbedManager()
+        with (
+            patch("subprocess.run") as mock_lsof,
+            patch("httpx.Client") as mock_httpx_cls,
+        ):
+            # lsof finds PID 12345
+            mock_lsof.return_value = Mock(returncode=0, stdout="12345\n")
+            # /health fails (not hindsight)
+            mock_client = MagicMock()
+            mock_client.__enter__ = Mock(return_value=mock_client)
+            mock_client.__exit__ = Mock(return_value=False)
+            mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+            mock_httpx_cls.return_value = mock_client
+
+            assert manager._clear_port(9555) is False
+
+    def test_port_occupied_health_non_200_returns_false(self):
+        """Port responds but not with 200 — treated as non-hindsight."""
+        manager = DaemonEmbedManager()
+        with (
+            patch("subprocess.run") as mock_lsof,
+            patch("httpx.Client") as mock_httpx_cls,
+        ):
+            mock_lsof.return_value = Mock(returncode=0, stdout="12345\n")
+            mock_client = MagicMock()
+            mock_client.__enter__ = Mock(return_value=mock_client)
+            mock_client.__exit__ = Mock(return_value=False)
+            mock_client.get.return_value = Mock(status_code=404)
+            mock_httpx_cls.return_value = mock_client
+
+            assert manager._clear_port(9555) is False
+
+    def test_lsof_timeout_assumes_free(self):
+        """If lsof times out, assume port is free."""
+        manager = DaemonEmbedManager()
+        with patch("subprocess.run") as mock_lsof:
+            mock_lsof.side_effect = subprocess.TimeoutExpired(cmd="lsof", timeout=5)
+            assert manager._clear_port(9555) is True
 
