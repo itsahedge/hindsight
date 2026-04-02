@@ -4349,7 +4349,10 @@ class MemoryEngine(MemoryEngineInterface):
             ]
 
             # Get entity information — only for visible units
-            if unit_ids:
+            # Fetch entities for visible units AND their source memories
+            # (so observations can inherit entities from source memories)
+            entity_lookup_ids = unit_ids + source_memory_ids
+            if entity_lookup_ids:
                 unit_entities = await conn.fetch(
                     f"""
                     SELECT ue.unit_id, e.canonical_name
@@ -4358,7 +4361,7 @@ class MemoryEngine(MemoryEngineInterface):
                     WHERE ue.unit_id = ANY($1::uuid[])
                     ORDER BY ue.unit_id
                 """,
-                    unit_ids,
+                    entity_lookup_ids,
                 )
             else:
                 unit_entities = []
