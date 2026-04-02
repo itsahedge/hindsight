@@ -6,9 +6,19 @@ sidebar_position: 9
 
 Declarative JSON manifests for creating pre-configured memory banks with a single API call.
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+import CodeSnippet from '@site/src/components/CodeSnippet';
+
+{/* Import raw source files */}
+import templatesPy from '!!raw-loader!@site/examples/api/bank-templates.py';
+import templatesMjs from '!!raw-loader!@site/examples/api/bank-templates.mjs';
+import templatesSh from '!!raw-loader!@site/examples/api/bank-templates.sh';
+import templatesGo from '!!raw-loader!@site/examples/api/bank-templates.go';
+
 ## Overview
 
-A bank template is a JSON manifest that describes a bank's full setup: configuration overrides, mental models, and (in the future) other resources. Instead of making multiple API calls to configure a bank, you submit one manifest and the API provisions everything.
+A bank template is a JSON manifest that describes a bank's full setup: configuration overrides, mental models, directives, and more. Instead of making multiple API calls to configure a bank, you submit one manifest and the API provisions everything.
 
 Templates are useful for:
 - **Replication** — stamp out identically-configured banks for multiple users or agents
@@ -16,7 +26,7 @@ Templates are useful for:
 - **Sharing** — distribute recommended setups as portable JSON files
 - **Framework integrations** — ship a recommended template alongside your integration
 
-Browse the [Template Gallery](/templates) for ready-to-use templates.
+Browse the [Bank Templates Hub](/templates) for ready-to-use templates.
 
 ## Manifest Schema
 
@@ -119,11 +129,20 @@ All fields in `bank` are optional. Only the fields you include will be set as pe
 
 Import a manifest into a bank. If the bank doesn't exist, it's created automatically.
 
-```bash
-curl -X POST http://localhost:8888/v1/default/banks/my-bank/import \
-  -H "Content-Type: application/json" \
-  -d @template.json
-```
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={templatesPy} section="import-template" language="python" />
+</TabItem>
+<TabItem value="node" label="Node.js">
+<CodeSnippet code={templatesMjs} section="import-template" language="javascript" />
+</TabItem>
+<TabItem value="cli" label="CLI">
+<CodeSnippet code={templatesSh} section="import-template" language="bash" />
+</TabItem>
+<TabItem value="go" label="Go">
+<CodeSnippet code={templatesGo} section="import-template" language="go" />
+</TabItem>
+</Tabs>
 
 ### Behavior
 
@@ -132,40 +151,42 @@ curl -X POST http://localhost:8888/v1/default/banks/my-bank/import \
 - **Directives**: matched by `name` — existing directives are updated, new ones are created
 - **Async**: mental model content is generated asynchronously. The response includes `operation_ids` to track progress.
 
-### Response
-
-```json
-{
-  "bank_id": "my-bank",
-  "config_applied": true,
-  "mental_models_created": ["sentiment-overview"],
-  "mental_models_updated": ["unresolved-issues"],
-  "directives_created": ["always-acknowledge-frustration"],
-  "directives_updated": ["no-internal-ids"],
-  "operation_ids": ["op-1", "op-2"],
-  "dry_run": false
-}
-```
-
 ### Dry Run
 
 Validate a manifest without applying changes:
 
-```bash
-curl -X POST http://localhost:8888/v1/default/banks/my-bank/import?dry_run=true \
-  -H "Content-Type: application/json" \
-  -d @template.json
-```
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={templatesPy} section="import-dry-run" language="python" />
+</TabItem>
+<TabItem value="node" label="Node.js">
+<CodeSnippet code={templatesMjs} section="import-dry-run" language="javascript" />
+</TabItem>
+<TabItem value="cli" label="CLI">
+<CodeSnippet code={templatesSh} section="import-dry-run" language="bash" />
+</TabItem>
+</Tabs>
 
 Returns what *would* happen (which config would be applied, which mental models would be created) without making any changes. Returns HTTP 400 with a detailed error message if the manifest is invalid.
 
 ## Export
 
-Export a bank's current config overrides and mental models as a manifest:
+Export a bank's current config overrides, mental models, and directives as a manifest:
 
-```bash
-curl http://localhost:8888/v1/default/banks/my-bank/export
-```
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={templatesPy} section="export-template" language="python" />
+</TabItem>
+<TabItem value="node" label="Node.js">
+<CodeSnippet code={templatesMjs} section="export-template" language="javascript" />
+</TabItem>
+<TabItem value="cli" label="CLI">
+<CodeSnippet code={templatesSh} section="export-template" language="bash" />
+</TabItem>
+<TabItem value="go" label="Go">
+<CodeSnippet code={templatesGo} section="export-template" language="go" />
+</TabItem>
+</Tabs>
 
 The exported manifest only includes config fields that were explicitly set as per-bank overrides — not the fully resolved config (which includes server/tenant defaults). This means the exported manifest is portable: importing it into a new bank only overrides the fields that were intentionally customized.
 
@@ -173,42 +194,47 @@ The exported manifest only includes config fields that were explicitly set as pe
 
 Export from one bank and import into another to replicate the setup:
 
-```bash
-# Export
-curl http://localhost:8888/v1/default/banks/source-bank/export > template.json
-
-# Import into a new bank
-curl -X POST http://localhost:8888/v1/default/banks/new-bank/import \
-  -H "Content-Type: application/json" \
-  -d @template.json
-```
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={templatesPy} section="export-reimport" language="python" />
+</TabItem>
+<TabItem value="node" label="Node.js">
+<CodeSnippet code={templatesMjs} section="export-reimport" language="javascript" />
+</TabItem>
+<TabItem value="cli" label="CLI">
+<CodeSnippet code={templatesSh} section="export-reimport" language="bash" />
+</TabItem>
+<TabItem value="go" label="Go">
+<CodeSnippet code={templatesGo} section="export-reimport" language="go" />
+</TabItem>
+</Tabs>
 
 ## JSON Schema
 
-The manifest format is defined by a JSON Schema that you can use to validate templates before importing. The schema is auto-generated from the Pydantic models and always matches the server's current version.
+The manifest format is defined by a JSON Schema. Fetch the live schema from your server:
 
-**API endpoint** — fetch the live schema from your server:
+<Tabs>
+<TabItem value="python" label="Python">
+<CodeSnippet code={templatesPy} section="get-schema" language="python" />
+</TabItem>
+<TabItem value="node" label="Node.js">
+<CodeSnippet code={templatesMjs} section="get-schema" language="javascript" />
+</TabItem>
+<TabItem value="cli" label="CLI">
+<CodeSnippet code={templatesSh} section="get-schema" language="bash" />
+</TabItem>
+<TabItem value="go" label="Go">
+<CodeSnippet code={templatesGo} section="get-schema" language="go" />
+</TabItem>
+</Tabs>
 
-```bash
-curl http://localhost:8888/v1/bank-template-schema
-```
-
-**Static schema** — also available as a static file: [bank-template-schema.json](/bank-template-schema.json)
-
-You can validate a template locally with any JSON Schema validator:
-
-```bash
-# Using Python jsonschema
-pip install jsonschema
-python -m jsonschema --instance template.json bank-template-schema.json
-
-# Using Node.js ajv-cli
-npx ajv-cli validate -s bank-template-schema.json -d template.json
-```
+The static schema is also available at [bank-template-schema.json](/bank-template-schema.json).
 
 ## Control Plane
 
-The control plane bank creation dialog includes an optional "Template" textarea. Paste a manifest JSON to pre-configure the bank on creation.
+The control plane bank creation dialog includes an optional "Import from template" toggle. Enable it to paste a manifest JSON and pre-configure the bank on creation.
+
+You can also export any bank's template from the bank Settings page via **Actions → Export Template**, which copies the manifest JSON to your clipboard.
 
 ## Versioning
 
