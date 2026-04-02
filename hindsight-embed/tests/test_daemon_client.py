@@ -1,7 +1,6 @@
 """Tests for daemon_client module."""
 
 import os
-import signal
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
