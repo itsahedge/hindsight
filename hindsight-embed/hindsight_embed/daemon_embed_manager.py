@@ -603,30 +603,12 @@ class DaemonEmbedManager(EmbedManager):
             logger.debug(f"UI not running for profile '{profile}'")
             return True
 
-        # Find PID by port
-        try:
-            result = subprocess.run(
-                ["lsof", "-ti", f":{ui_port}", "-sTCP:LISTEN"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                pid = int(result.stdout.strip().split()[0])
-                logger.debug(f"Found UI PID {pid} on port {ui_port}")
-                os.kill(pid, 15)
-
-                # Wait for process to exit
-                for _ in range(50):
-                    time.sleep(0.1)
-                    try:
-                        os.kill(pid, 0)
-                    except OSError:
-                        break
-            else:
-                logger.warning(f"Could not find PID for UI port {ui_port}")
-        except (subprocess.TimeoutExpired, ValueError, OSError, FileNotFoundError) as e:
-            logger.warning(f"Could not find/kill UI by port: {e}")
+        pid = self._find_pid_on_port(ui_port)
+        if pid is not None:
+            logger.debug(f"Found UI PID {pid} on port {ui_port}")
+            self._kill_process(pid)
+        else:
+            logger.warning(f"Could not find PID for UI port {ui_port}")
 
         # Wait for health check to fail
         for _ in range(30):
@@ -673,32 +655,12 @@ class DaemonEmbedManager(EmbedManager):
         paths = self._profile_manager.resolve_profile_paths(profile)
         port = paths.port
 
-        # Find PID by port
-        try:
-            result = subprocess.run(
-                ["lsof", "-ti", f":{port}", "-sTCP:LISTEN"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                pid = int(result.stdout.strip().split()[0])
-                logger.debug(f"Found daemon PID {pid} on port {port}")
-
-                # Send SIGTERM
-                os.kill(pid, 15)
-
-                # Wait for process to exit
-                for _ in range(50):
-                    time.sleep(0.1)
-                    try:
-                        os.kill(pid, 0)
-                    except OSError:
-                        break
-            else:
-                logger.warning(f"Could not find PID for port {port}")
-        except (subprocess.TimeoutExpired, ValueError, OSError, FileNotFoundError) as e:
-            logger.warning(f"Could not find/kill daemon by port: {e}")
+        pid = self._find_pid_on_port(port)
+        if pid is not None:
+            logger.debug(f"Found daemon PID {pid} on port {port}")
+            self._kill_process(pid)
+        else:
+            logger.warning(f"Could not find PID for port {port}")
 
         # Wait for health check to fail
         for _ in range(30):
