@@ -5,16 +5,25 @@
       "name": "Conversation",
       "description": "For chat-based agents and assistants. Tracks user preferences, conversation patterns, and builds a profile over time.",
       "category": "chat",
-      "integrations": ["litellm", "langgraph", "pydantic-ai", "ai-sdk", "chat", "crewai", "ag2", "agno", "strands", "llamaindex", "local-mcp", "skills"],
+      "integrations": [
+        "litellm",
+        "langgraph",
+        "pydantic-ai",
+        "ai-sdk",
+        "chat",
+        "crewai",
+        "ag2",
+        "agno",
+        "strands",
+        "llamaindex",
+        "local-mcp",
+        "skills"
+      ],
       "manifest": {
         "version": "1",
         "bank": {
-          "reflect_mission": "You are a memory assistant for a conversational AI. Help recall user preferences, past interactions, and important context. Focus on what the user cares about and how they like to interact.",
           "retain_mission": "Extract user preferences, stated facts about themselves, requests they've made, topics they care about, and any commitments or follow-ups. Ignore small talk and filler.",
           "retain_extraction_mode": "concise",
-          "disposition_skepticism": 3,
-          "disposition_literalism": 3,
-          "disposition_empathy": 4,
           "enable_observations": true,
           "observations_mission": "Track stable user preferences, communication style, recurring topics, and how the user's needs evolve over time."
         },
@@ -45,16 +54,15 @@
       "name": "Coding Agent",
       "description": "For coding assistants. Remembers project architecture, technical decisions, coding patterns, and user preferences across sessions. High literalism for precise technical recall.",
       "category": "coding",
-      "integrations": ["claude-code", "codex"],
+      "integrations": [
+        "claude-code",
+        "codex"
+      ],
       "manifest": {
         "version": "1",
         "bank": {
-          "reflect_mission": "You are a memory assistant for a coding agent. Help recall technical decisions, project architecture, coding conventions, and the developer's tool and library preferences. Be precise and factual.",
           "retain_mission": "Extract technical decisions and their rationale, architectural choices, coding patterns and conventions, project structure facts, library/tool preferences, and recurring issues. Ignore transient debugging output and boilerplate.",
           "retain_extraction_mode": "concise",
-          "disposition_skepticism": 3,
-          "disposition_literalism": 5,
-          "disposition_empathy": 1,
           "enable_observations": true,
           "observations_mission": "Track stable project facts: tech stack, team conventions, architecture patterns, and how the codebase evolves over time."
         },
@@ -85,16 +93,17 @@
       "name": "Personal Assistant",
       "description": "For always-on personal assistants that manage tasks, remember preferences, and maintain context across daily life. Tracks commitments, routines, and personal context.",
       "category": "assistant",
-      "integrations": ["openclaw", "hermes", "nemoclaw", "hindclaw"],
+      "integrations": [
+        "openclaw",
+        "hermes",
+        "nemoclaw",
+        "hindclaw"
+      ],
       "manifest": {
         "version": "1",
         "bank": {
-          "reflect_mission": "You are a memory assistant for a personal AI assistant. Help recall the user's preferences, routines, ongoing tasks, and personal context. Be warm but precise — the user relies on you to remember what matters to them.",
           "retain_mission": "Extract the user's preferences, routines, scheduled events, commitments, people they mention, and any personal context they share. Track what they ask for repeatedly and what they care about.",
           "retain_extraction_mode": "verbose",
-          "disposition_skepticism": 2,
-          "disposition_literalism": 3,
-          "disposition_empathy": 5,
           "enable_observations": true,
           "observations_mission": "Track the user's stable preferences, recurring routines, important people and relationships, and how their priorities shift over time."
         },
