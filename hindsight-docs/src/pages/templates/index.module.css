@@ -464,6 +464,8 @@
   overflow-x: auto;
   margin: 0;
   border: 1px solid var(--ifm-color-emphasis-200);
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 [data-theme='dark'] .manifestCode {
