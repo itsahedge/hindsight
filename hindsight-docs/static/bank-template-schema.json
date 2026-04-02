@@ -491,7 +491,6 @@
       "reflect_mission": "You are helping a support agent remember customer interactions.",
       "retain_mission": "Extract customer issues, resolutions, and sentiment."
     },
-    "description": "Customer support agent template",
     "directives": [
       {
         "content": "Always respond with empathy and understanding.",
@@ -516,19 +515,6 @@
       "description": "Manifest schema version (currently '1')",
       "title": "Version",
       "type": "string"
-    },
-    "description": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Human-readable description of the template",
-      "title": "Description"
     },
     "bank": {
       "anyOf": [

@@ -1696,7 +1696,6 @@ class BankTemplateManifest(BaseModel):
         json_schema_extra={
             "example": {
                 "version": "1",
-                "description": "Customer support agent template",
                 "bank": {
                     "reflect_mission": "You are helping a support agent remember customer interactions.",
                     "retain_mission": "Extract customer issues, resolutions, and sentiment.",
@@ -1723,7 +1722,6 @@ class BankTemplateManifest(BaseModel):
     )
 
     version: str = Field(description="Manifest schema version (currently '1')")
-    description: str | None = Field(default=None, description="Human-readable description of the template")
     bank: BankTemplateConfig | None = Field(
         default=None, description="Bank configuration to apply. Omit to leave config unchanged."
     )
@@ -4630,7 +4628,6 @@ def _register_routes(app: FastAPI):
 
             return BankTemplateManifest(
                 version=BANK_TEMPLATE_CURRENT_VERSION,
-                description=f"Exported from bank '{bank_id}'",
                 bank=bank_config,
                 mental_models=template_mental_models if template_mental_models else None,
                 directives=template_directives if template_directives else None,

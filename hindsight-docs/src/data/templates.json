@@ -8,7 +8,6 @@
       "integrations": ["litellm", "langgraph", "pydantic-ai", "ai-sdk", "chat", "crewai", "ag2", "agno", "strands", "llamaindex", "local-mcp", "skills"],
       "manifest": {
         "version": "1",
-        "description": "General-purpose conversation memory for chat agents and assistants",
         "bank": {
           "reflect_mission": "You are a memory assistant for a conversational AI. Help recall user preferences, past interactions, and important context. Focus on what the user cares about and how they like to interact.",
           "retain_mission": "Extract user preferences, stated facts about themselves, requests they've made, topics they care about, and any commitments or follow-ups. Ignore small talk and filler.",
@@ -67,7 +66,6 @@
       "integrations": ["claude-code", "codex"],
       "manifest": {
         "version": "1",
-        "description": "Memory for coding agents — tracks technical decisions, project context, and developer preferences",
         "bank": {
           "reflect_mission": "You are a memory assistant for a coding agent. Help recall technical decisions, project architecture, coding conventions, and the developer's tool and library preferences. Be precise and factual.",
           "retain_mission": "Extract technical decisions and their rationale, architectural choices, coding patterns and conventions, project structure facts, library/tool preferences, and recurring issues. Ignore transient debugging output and boilerplate.",
@@ -126,7 +124,6 @@
       "integrations": ["openclaw", "hermes", "nemoclaw", "hindclaw"],
       "manifest": {
         "version": "1",
-        "description": "Memory for personal assistants — tracks preferences, tasks, routines, and personal context",
         "bank": {
           "reflect_mission": "You are a memory assistant for a personal AI assistant. Help recall the user's preferences, routines, ongoing tasks, and personal context. Be warm but precise — the user relies on you to remember what matters to them.",
           "retain_mission": "Extract the user's preferences, routines, scheduled events, commitments, people they mention, and any personal context they share. Track what they ask for repeatedly and what they care about.",

@@ -25,7 +25,6 @@ def bank_id():
 def sample_template():
     return {
         "version": "1",
-        "description": "Test template",
         "bank": {
             "reflect_mission": "Test mission for reflect",
             "retain_mission": "Extract test data carefully",

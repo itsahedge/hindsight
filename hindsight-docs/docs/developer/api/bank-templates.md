@@ -23,7 +23,6 @@ Browse the [Template Gallery](/templates) for ready-to-use templates.
 ```json
 {
   "version": "1",
-  "description": "Human-readable description (optional)",
   "bank": {
     "reflect_mission": "...",
     "retain_mission": "...",
@@ -70,7 +69,6 @@ Browse the [Template Gallery](/templates) for ready-to-use templates.
 | Field | Required | Description |
 |-------|----------|-------------|
 | `version` | Yes | Schema version. Currently `"1"`. |
-| `description` | No | Human-readable description of the template. |
 | `bank` | No | Bank configuration overrides. Omit to leave config unchanged. |
 | `mental_models` | No | Mental models to create or update. Omit to leave unchanged. |
 | `directives` | No | Directives to create or update. Omit to leave unchanged. |
