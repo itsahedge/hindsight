@@ -184,6 +184,7 @@ export default function BankPage() {
                     <DropdownMenuContent align="end" className="w-48">
                       <DropdownMenuItem
                         onClick={async () => {
+                          if (!bankId) return;
                           try {
                             const manifest = await client.exportBankTemplate(bankId);
                             const json = JSON.stringify(manifest, null, 2);
