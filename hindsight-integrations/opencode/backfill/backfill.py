@@ -25,6 +25,7 @@ from pathlib import Path
 
 try:
     from hindsight_client import Hindsight
+    from hindsight_client_api.exceptions import ApiException
 except ImportError:
     print(
         "Error: hindsight-client not installed. Run: pip install hindsight-client",
@@ -108,6 +109,8 @@ def reconstruct_opencode_transcript(conn, session_id, include_tools=False):
     lines = []
     message_count = 0
     for role, model, part_type, text, tool_name, msg_time in rows:
+        if not msg_time:
+            continue
         ts = datetime.fromtimestamp(msg_time / 1000, tz=timezone.utc).strftime(
             "%Y-%m-%d %H:%M"
         )
@@ -128,7 +131,6 @@ def backfill_opencode(args, client):
         sys.exit(1)
 
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.execute("PRAGMA journal_mode=WAL")
 
     since = None
     if args.since:
@@ -164,7 +166,10 @@ def backfill_opencode(args, client):
         project_name = (
             Path(session["directory"]).name if session["directory"] else "unknown"
         )
-        ts = datetime.fromtimestamp(session["time_created"] / 1000, tz=timezone.utc)
+        created = session["time_created"]
+        ts = (
+            datetime.fromtimestamp(created / 1000, tz=timezone.utc) if created else None
+        )
 
         processed = ingested + skipped + errors + 1
         if args.verbose or args.dry_run:
@@ -196,7 +201,7 @@ def backfill_opencode(args, client):
                 tags=[f"project:{project_name}"],
             )
             ingested += 1
-        except Exception as e:
+        except ApiException as e:
             errors += 1
             print(
                 f"  Error retaining session {session['id']}: {type(e).__name__}: {e}",
@@ -228,6 +233,7 @@ def backfill_jsonl(args, client):
     print(f"Found {len(files)} transcript files to backfill")
 
     ingested = 0
+    skipped = 0
     errors = 0
 
     for filepath in sorted(files):
@@ -281,15 +287,19 @@ def backfill_jsonl(args, client):
 
         transcript = "\n\n".join(lines)
         if len(transcript) < args.min_chars:
+            skipped += 1
             continue
         path_hash = sha256(str(filepath.resolve()).encode()).hexdigest()[:12]
         doc_id = f"jsonl-{filepath.stem}-{path_hash}"
         context = args.context or f"transcript from {filepath.name}"
 
+        processed = ingested + skipped + errors + 1
         if args.verbose or args.dry_run:
             print(
-                f"  [{ingested + 1}] {filepath.name} ({len(transcript):,} chars, {len(messages)} msgs)"
+                f"  [{processed}/{len(files)}] {filepath.name} ({len(transcript):,} chars, {len(messages)} msgs)"
             )
+        elif processed % 25 == 0:
+            print(f"  {processed}/{len(files)} files processed...")
 
         if args.dry_run:
             ingested += 1
@@ -313,19 +323,20 @@ def backfill_jsonl(args, client):
                 tags=tags,
             )
             ingested += 1
-        except Exception as e:
+        except ApiException as e:
             errors += 1
             print(
                 f"  Error retaining {filepath}: {type(e).__name__}: {e}",
                 file=sys.stderr,
             )
 
-    print(f"\nDone. Ingested: {ingested}, Errors: {errors}")
+    print(f"\nDone. Ingested: {ingested}, Skipped: {skipped}, Errors: {errors}")
     if args.dry_run:
         print("(dry run, nothing was actually ingested)")
 
 
-def create_bank_if_needed(client, args):
+def create_bank_if_needed(client, args) -> bool:
+    """Create the memory bank. Returns True on success or if it already exists."""
     try:
         client.create_bank(
             bank_id=args.bank_id,
@@ -338,6 +349,7 @@ def create_bank_if_needed(client, args):
             ),
         )
         print(f"Created bank: {args.bank_id}")
+        return True
     except Exception as e:
         status = getattr(e, "status_code", None) or getattr(e, "status", None)
         is_conflict = status == 409
@@ -352,10 +364,10 @@ def create_bank_if_needed(client, args):
         if is_conflict:
             if args.verbose:
                 print(f"Bank '{args.bank_id}' already exists")
-        else:
-            print(
-                f"Warning: failed to create bank '{args.bank_id}': {e}", file=sys.stderr
-            )
+            return True
+
+        print(f"Error: failed to create bank '{args.bank_id}': {e}", file=sys.stderr)
+        return False
 
 
 def main():
@@ -409,15 +421,9 @@ Examples:
     )
     parser.add_argument(
         "--skip-subagent",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
         help="Skip subagent sessions (default: true)",
-    )
-    parser.add_argument(
-        "--no-skip-subagent",
-        dest="skip_subagent",
-        action="store_false",
-        help="Include subagent sessions",
     )
     parser.add_argument(
         "--include-tools",
@@ -439,7 +445,8 @@ Examples:
 
     client = Hindsight(base_url=args.hindsight_url, api_key=args.token, timeout=1800)
     if not args.dry_run:
-        create_bank_if_needed(client, args)
+        if not create_bank_if_needed(client, args):
+            sys.exit(1)
 
     if args.source == "opencode":
         backfill_opencode(args, client)
