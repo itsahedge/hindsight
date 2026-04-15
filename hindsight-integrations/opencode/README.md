@@ -148,6 +148,10 @@ export HINDSIGHT_CHANNEL_ID="slack-general"
 export HINDSIGHT_USER_ID="user123"
 ```
 
+## Backfill Tool
+
+See [backfill/README.md](backfill/README.md) for a CLI that imports historical OpenCode sessions and JSONL transcripts into Hindsight.
+
 ## Development
 
 ```bash
